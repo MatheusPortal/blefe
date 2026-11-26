@@ -31,7 +31,7 @@
       </div>
 
       <div class="table-wrap">
-        <canvas id="game-canvas" width="1100" height="570" aria-label="Mesa do duelo: você contra a inteligência artificial"></canvas>
+        <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: use o mouse para jogar suas cartas"></canvas>
       </div>
 
       <section class="play-panel" aria-live="polite">
@@ -56,7 +56,7 @@
 
     <footer class="page-footer">
       <span>Um jogo de estratégia, memória e um pouco de sorte.</span>
-      <span>v0.1 · Jogo local, sem internet</span>
+      <span>v0.2 · Jogo local, sem internet</span>
     </footer>
   </main>
 
@@ -69,7 +69,7 @@
       <button class="icon-button" id="close-rules" type="button" aria-label="Fechar regras">×</button>
     </div>
     <div class="rules-content">
-      <p>Você e a IA começam com <strong>5 vidas</strong>. Na sua vez, jogue uma carta sem mostrá-la. A IA tentará adivinhar; quando a IA jogar, será sua vez de adivinhar.</p>
+      <p>Você e a IA começam com <strong>5 vidas e 7 cartas aleatórias</strong>. Suas cartas ficam abertas na parte inferior da mesa: clique em uma para jogá-la virada para baixo. As cartas da IA ficam escondidas no topo. Um sorteio decide quem começa.</p>
       <ul>
         <li><span>🦁 Leão</span> — se o palpite estiver errado, quem adivinhou perde 2 vidas.</li>
         <li><span>🐇 Coelho</span> — se acertar, quem adivinhou ganha 1 ponto de sorte.</li>
@@ -77,8 +77,9 @@
         <li><span>🐟 Peixe</span> — não tem efeito especial.</li>
         <li><span>🃏 Coringa</span> — troca o palpite por uma carta aleatória, tira 1 vida e dá 3 cartas bônus a quem adivinhou.</li>
       </ul>
-      <p>Cada jogador começa com 2 ou 3 cartas de cada tipo comum. Há 2% de chance de um único Coringa aparecer na partida. Cartas jogadas voltam à mão quando ela acaba. A sorte pode ser gasta durante um palpite para eliminar uma opção incorreta. Você tem 60 segundos por ação; ao acabar, o jogo escolhe por você.</p>
-      <p class="rules-note">Vence quem reduzir a vida do adversário a zero. Esta é a primeira versão: regras e IA podem evoluir.</p>
+      <p>Há 2% de chance de um único Coringa entrar na partida, substituindo uma carta inicial. Cartas bônus entram na mão de quem as recebe; a mão da IA permanece escondida. No máximo 20 cartas viradas para baixo são desenhadas na mesa. A sorte pode eliminar uma opção incorreta durante um palpite. Você tem 60 segundos por ação; ao acabar, o jogo escolhe por você.</p>
+      <p>Cartas jogadas não voltam à mão. Vence quem ficar sem cartas ou reduzir a vida do adversário a zero.</p>
+      <p class="rules-note">A IA usa o histórico para orientar suas decisões, mas também varia as jogadas para evitar padrões previsíveis.</p>
     </div>
   </dialog>
 

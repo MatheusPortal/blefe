@@ -140,6 +140,7 @@ h1 span { color: #9eafb1; font-weight: 500; }
   display: block;
   width: 100%;
   height: auto;
+  touch-action: manipulation;
 }
 
 .play-panel {
@@ -207,7 +208,7 @@ h1 span { color: #9eafb1; font-weight: 500; }
   letter-spacing: .14em;
 }
 
-.card-button, .guess-button, .primary-button, .hint-button {
+.guess-button, .primary-button, .hint-button {
   min-height: 43px;
   border: 1px solid rgba(229, 239, 229, .15);
   border-radius: 7px;
@@ -217,30 +218,10 @@ h1 span { color: #9eafb1; font-weight: 500; }
   transition: background .16s ease, border-color .16s ease, transform .16s ease;
 }
 
-.card-button:hover, .guess-button:hover:not(:disabled) {
+.guess-button:hover:not(:disabled) {
   transform: translateY(-2px);
   border-color: var(--lime);
   background: rgba(201, 239, 116, .1);
-}
-
-.card-button {
-  min-width: 106px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 13px;
-  padding: 0 12px;
-}
-
-.card-button .card-name { font-size: 12px; }
-.card-button .card-count {
-  min-width: 21px;
-  padding: 3px 5px;
-  color: var(--lime);
-  background: rgba(201, 239, 116, .1);
-  border-radius: 4px;
-  font: 10px Consolas, "Courier New", monospace;
-  text-align: center;
 }
 
 .guess-button {
@@ -337,7 +318,6 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .table-wrap { border-radius: 9px 9px 3px 3px; }
   .play-panel { padding: 15px 13px; }
   .action-area { gap: 7px; }
-  .card-button { min-width: calc(50% - 5px); }
   .guess-button { min-width: calc(33.33% - 5px); flex: 1; }
   .page-footer { gap: 14px; font-size: 8px; }
 }
