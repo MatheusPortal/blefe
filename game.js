@@ -25,16 +25,13 @@
   const tableOverlay = document.querySelector("#table-overlay");
   const tableResult = document.querySelector("#table-result");
   const tableRestartButton = document.querySelector("#play-again-button");
-  const playPanel = document.querySelector(".play-panel");
   const tableFooter = document.querySelector(".table-footer");
   const actionArea = document.querySelector("#action-area");
-  const turnLabel = document.querySelector("#turn-label");
-  const turnMessage = document.querySelector("#turn-message");
   const timer = document.querySelector("#timer");
   const timerValue = document.querySelector("#timer-value");
   const rulesDialog = document.querySelector("#rules-dialog");
   const MOBILE_CANVAS_WIDTH = 780;
-  const MOBILE_CANVAS_HEIGHT = 1050;
+  const MOBILE_CANVAS_HEIGHT = 1520;
   const isMobileCanvas = () => canvas.width === MOBILE_CANVAS_WIDTH;
 
   let state;
@@ -569,14 +566,13 @@
   function render() {
     drawTable();
     updateTimer();
-    turnMessage.textContent = state.message;
     const showTableResult = ["result", "game-over", "setup-result"].includes(state.phase)
       || (state.phase === "dice-roll" && state.diceFrame >= 8);
-    playPanel.hidden = showTableResult;
     tableOverlay.hidden = !showTableResult;
     tableResult.textContent = showTableResult ? state.message : "";
     tableRestartButton.hidden = state.phase !== "game-over";
     tableFooter.hidden = state.phase === "game-over";
+    actionArea.hidden = !["setup-guess", "player-guess"].includes(state.phase);
     renderActions();
     canvas.setAttribute("aria-label", getCanvasDescription());
   }
@@ -587,17 +583,10 @@
 
   function renderActions() {
     actionArea.replaceChildren();
-    turnLabel.textContent = ["player-play", "player-guess", "setup-guess"].includes(state.phase)
-      ? "SUA VEZ"
-      : ["result", "game-over", "setup-result"].includes(state.phase) ? "RESULTADO" : "MESA";
 
     if (state.phase === "setup-guess") {
-      addCaption("PALPITE PARA ABRIR A PARTIDA");
       for (const type of COMMON_CARDS) addGuessButton(type, () => submitSetupGuess(type));
-    } else if (state.phase === "player-play") {
-      addCaption("CLIQUE EM UMA CARTA");
     } else if (state.phase === "player-guess") {
-      addCaption("PALPITE");
       for (const type of CARD_TYPES) {
         const button = addGuessButton(type, () => submitGuess("player", type));
         button.disabled = type === state.eliminated;
@@ -610,17 +599,6 @@
       hint.setAttribute("aria-label", `Usar sorte: ${state.players.player.luck}`);
       hint.addEventListener("click", useLuck);
       actionArea.append(hint);
-    } else if (["result", "game-over", "setup-result"].includes(state.phase)
-      || (state.phase === "dice-roll" && state.diceFrame >= 8)) {
-      return;
-    } else if (state.phase === "dealing") {
-      addCaption("DISTRIBUINDO...");
-    } else if (state.phase === "setup-revealing" || state.phase === "revealing") {
-      addCaption("REVELANDO...");
-    } else if (state.phase === "dice-roll") {
-      addCaption("DESEMPATE · DADOS");
-    } else {
-      addCaption("A IA PENSA...");
     }
   }
 
@@ -632,13 +610,6 @@
     button.addEventListener("click", onClick);
     actionArea.append(button);
     return button;
-  }
-
-  function addCaption(text) {
-    const caption = document.createElement("p");
-    caption.className = "action-caption";
-    caption.textContent = text;
-    actionArea.append(caption);
   }
 
   function updateTimer() {
@@ -687,8 +658,8 @@
     ctx.ellipse(width / 2, height / 2 + 5, 466, 239, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    drawPlayerPanel(ctx, 916, 24, state.players.ai, "OPONENTE", false);
-    drawPlayerPanel(ctx, 916, 524, state.players.player, "VOCÊ", true);
+    drawPlayerPanel(ctx, 1012, 78, state.players.ai, "IA", false);
+    drawPlayerPanel(ctx, 1012, 568, state.players.player, "VOCÊ", true);
     drawExtraDeck(ctx);
     drawAiHand(ctx);
     drawCenter(ctx, width / 2, 326);
@@ -724,14 +695,14 @@
     ctx.strokeStyle = "rgba(207, 231, 183, .28)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.ellipse(width / 2, height / 2, width * .46, height * .38, 0, 0, Math.PI * 2);
+    ctx.ellipse(width / 2, height / 2, width * .46, height * .46, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    drawMobilePlayerPanel(ctx, 545, 20, state.players.ai, "IA");
-    drawMobilePlayerPanel(ctx, 545, 900, state.players.player, "VOCÊ");
+    drawMobilePlayerPanel(ctx, 690, 76, state.players.ai, "IA");
+    drawMobilePlayerPanel(ctx, 690, 1410, state.players.player, "VOCÊ");
     drawExtraDeck(ctx);
     drawAiHand(ctx);
-    drawCenter(ctx, width / 2, 470);
+    drawCenter(ctx, width / 2, 650);
     drawPlayerHand(ctx);
     drawGuessMarkers(ctx);
 
@@ -744,71 +715,61 @@
           : state.phase === "player-guess" ? "SEU PALPITE"
             : ["result", "game-over"].includes(state.phase) ? "REVELADA"
               : state.phase === "dealing" ? "DISTRIBUINDO" : "IA PENSA";
-    ctx.fillText(phaseText, width / 2, 355);
+    ctx.fillText(phaseText, width / 2, 480);
 
     if (state.phase === "dice-roll") drawDice(ctx);
   }
 
   function drawMobilePlayerPanel(ctx, x, y, player, label) {
-    const width = 215;
-    const height = 120;
-    ctx.save();
-    ctx.fillStyle = "rgba(15, 33, 29, .78)";
-    roundRect(ctx, x, y, width, height, 12);
-    ctx.fill();
-    ctx.strokeStyle = label === "VOCÊ" ? "rgba(201, 239, 116, .4)" : "rgba(231, 243, 229, .14)";
-    ctx.lineWidth = 2;
-    roundRect(ctx, x, y, width, height, 12);
-    ctx.stroke();
-    ctx.textAlign = "left";
-    ctx.fillStyle = label === "VOCÊ" ? "#c9ef74" : "#b5d5c7";
-    ctx.font = "15px Consolas, monospace";
-    ctx.fillText(label, x + 15, y + 22);
-    ctx.fillStyle = "#ef806f";
-    ctx.font = "20px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif";
-    ctx.fillText(`${"♥".repeat(player.hp)}${"♡".repeat(5 - player.hp)}`, x + 15, y + 54);
-    ctx.fillStyle = "#a9bdba";
-    ctx.font = "14px Consolas, monospace";
-    ctx.fillText(`${player.hp}/5 VIDA`, x + 15, y + 80);
-    ctx.textAlign = "right";
-    ctx.fillStyle = "#e5eddf";
-    ctx.fillText(`${player.hand.length} CARTAS`, x + width - 15, y + 80);
-    if (player.luck > 0 || player.shields > 0) {
-      ctx.fillStyle = "#d9c477";
-      ctx.fillText(`✦${player.luck}  ⛨${player.shields}`, x + width - 15, y + 25);
-    }
-    ctx.restore();
+    drawPlayerBadge(ctx, x, y, player, label, label === "VOCÊ", true);
   }
 
   function drawPlayerPanel(ctx, x, y, player, label, isPlayer) {
+    drawPlayerBadge(ctx, x, y, player, label, isPlayer, false);
+  }
+
+  function drawPlayerBadge(ctx, x, y, player, label, isPlayer, mobile) {
+    const radius = mobile ? 43 : 35;
+    const ringRadius = radius - (mobile ? 6 : 5);
     ctx.save();
-    ctx.fillStyle = "rgba(15, 33, 29, .72)";
-    roundRect(ctx, x, y, 162, 91, 10);
+    ctx.fillStyle = "rgba(15, 33, 29, .78)";
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = isPlayer ? "rgba(201, 239, 116, .4)" : "rgba(231, 243, 229, .14)";
+    ctx.strokeStyle = isPlayer ? "rgba(201, 239, 116, .55)" : "rgba(231, 243, 229, .2)";
     ctx.lineWidth = 1;
-    roundRect(ctx, x, y, 162, 91, 10);
     ctx.stroke();
 
+    ctx.beginPath();
+    ctx.arc(x, y, ringRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(239, 128, 111, .24)";
+    ctx.lineWidth = mobile ? 6 : 5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x, y, ringRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * player.hp / 5);
+    ctx.strokeStyle = "#ef806f";
+    ctx.lineWidth = mobile ? 6 : 5;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    ctx.textAlign = "center";
     ctx.fillStyle = isPlayer ? "#c9ef74" : "#b5d5c7";
-    ctx.textAlign = "left";
-    ctx.font = "9px Consolas, monospace";
-    ctx.fillText(label, x + 11, y + 17);
-    ctx.fillStyle = "#f4f4e9";
-    ctx.font = "bold 14px 'Segoe UI', sans-serif";
-    ctx.fillText(player.name, x + 11, y + 37);
-    ctx.fillStyle = "#ef806f";
-    ctx.font = "12px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif";
-    ctx.fillText(`${"♥".repeat(player.hp)}${"♡".repeat(5 - player.hp)}`, x + 11, y + 57);
-    ctx.fillStyle = "#a9bdba";
-    ctx.font = "9px Consolas, monospace";
-    ctx.fillText(`${player.hp}/5 VIDAS`, x + 11, y + 75);
-    ctx.textAlign = "right";
+    ctx.font = `${mobile ? 15 : 9}px Consolas, monospace`;
+    ctx.fillText(label, x, y - radius - (mobile ? 8 : 7));
     ctx.fillStyle = "#e5eddf";
-    ctx.fillText(`${player.hand.length} CARTAS`, x + 151, y + 75);
+    ctx.font = `bold ${mobile ? 25 : 19}px 'Segoe UI', sans-serif`;
+    ctx.fillText(String(player.hand.length), x, y + (mobile ? 7 : 6));
+    ctx.fillStyle = "#a9bdba";
+    ctx.font = `${mobile ? 9 : 7}px Consolas, monospace`;
+    ctx.fillText("CARTAS", x, y + (mobile ? 20 : 16));
+    ctx.fillStyle = "#ef806f";
+    ctx.font = `${mobile ? 12 : 8}px Consolas, monospace`;
+    ctx.fillText(`♥ ${player.hp}`, x, y + radius + (mobile ? 13 : 11));
     if (player.luck > 0 || player.shields > 0) {
       ctx.fillStyle = "#d9c477";
-      ctx.fillText(`✦${player.luck}  ⛨${player.shields}`, x + 151, y + 19);
+      ctx.font = `${mobile ? 10 : 8}px Consolas, monospace`;
+      ctx.fillText(`✦${player.luck} ⛨${player.shields}`, x, y + radius + (mobile ? 25 : 21));
     }
     ctx.restore();
   }
@@ -816,7 +777,7 @@
   function drawExtraDeck(ctx) {
     const mobile = isMobileCanvas();
     const x = mobile ? 32 : 48;
-    const y = mobile ? 430 : 272;
+    const y = mobile ? 520 : 272;
     const cardWidth = mobile ? 96 : 76;
     const cardHeight = mobile ? 138 : 108;
     const canDraw = state.extraDeck.length > 0 || state.extraDiscard.length > 0;
@@ -878,13 +839,13 @@
     const startX = canvas.width / 2 - ((visibleCount - 1) * spacing) / 2;
     for (let index = 0; index < visibleCount; index += 1) {
       const x = startX + index * spacing;
-      drawCard(ctx, x - cardWidth / 2, 205 - cardHeight / 2, null, cardWidth, cardHeight);
+      drawCard(ctx, x - cardWidth / 2, 250 - cardHeight / 2, null, cardWidth, cardHeight);
     }
     if (handSize > MAX_FACE_DOWN_CARDS) {
       ctx.fillStyle = "#c9ef74";
       ctx.font = "14px Consolas, monospace";
       ctx.textAlign = "center";
-      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, canvas.width / 2, 285);
+      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, canvas.width / 2, 330);
     }
   }
 
@@ -893,6 +854,25 @@
     const visibleCount = state.phase === "dealing" ? state.dealt.player : hand.length;
     const layouts = [];
     const mobile = isMobileCanvas();
+    const compacted = ["player-guess", "setup-guess"].includes(state.phase);
+    if (compacted) {
+      const spacing = visibleCount > 1
+        ? Math.min(mobile ? 12 : 16, (mobile ? 150 : 210) / (visibleCount - 1))
+        : 0;
+      const startX = mobile ? 48 : 66;
+      for (let index = 0; index < visibleCount; index += 1) {
+        const normalized = visibleCount > 1 ? (index / (visibleCount - 1)) * 2 - 1 : 0;
+        layouts.push({
+          index,
+          x: startX + index * spacing,
+          y: mobile ? 1280 : 568,
+          angle: normalized * 0.1,
+          type: hand[index]
+        });
+      }
+      return layouts;
+    }
+
     const centerX = mobile ? canvas.width / 2 : 550;
     const spacing = visibleCount > 1
       ? Math.min(mobile ? 76 : 76, (mobile ? 440 : 500) / (visibleCount - 1))
@@ -904,7 +884,7 @@
       layouts.push({
         index,
         x: startX + index * spacing,
-        y: mobile ? 795 + Math.abs(normalized) * 18 : 536 + Math.abs(normalized) * 17,
+        y: mobile ? 1180 + Math.abs(normalized) * 18 : 536 + Math.abs(normalized) * 17,
         angle: normalized * 0.38,
         type: hand[index]
       });
@@ -914,28 +894,31 @@
 
   function drawPlayerHand(ctx) {
     const canPlay = state.phase === "player-play";
+    const mobile = isMobileCanvas();
+    const compacted = ["player-guess", "setup-guess"].includes(state.phase);
+    const cardWidth = compacted ? mobile ? 72 : 62 : CARD_WIDTH;
+    const cardHeight = compacted ? mobile ? 98 : 84 : CARD_HEIGHT;
     const layouts = getPlayerCardLayouts();
     for (const layout of layouts) {
       const hovered = canPlay && layout.index === hoverCard;
       drawCard(
         ctx,
-        layout.x - CARD_WIDTH / 2,
-        layout.y - CARD_HEIGHT / 2 - (hovered ? 15 : 0),
+        layout.x - cardWidth / 2,
+        layout.y - cardHeight / 2 - (hovered ? 15 : 0),
         layout.type,
-        CARD_WIDTH,
-        CARD_HEIGHT,
+        cardWidth,
+        cardHeight,
         layout.angle,
         hovered
       );
     }
     if (canPlay && hoverCard >= 0 && layouts[hoverCard]) drawCardTooltip(ctx, layouts[hoverCard]);
-    if (state.players.player.hand.length > 0) {
+    if (state.players.player.hand.length > 0 && !compacted) {
       ctx.fillStyle = "rgba(226, 238, 221, .76)";
-      const mobile = isMobileCanvas();
       ctx.font = `${mobile ? 14 : 9}px Consolas, monospace`;
       ctx.textAlign = "center";
       ctx.fillText(
-        canPlay ? "SUA MÃO · CLIQUE PARA JOGAR" : "SUA MÃO",
+        "SUA MÃO · CLIQUE PARA JOGAR",
         canvas.width / 2,
         mobile ? canvas.height - 18 : 644
       );
@@ -980,7 +963,7 @@
   function drawGuessMarker(ctx, playerKey, type) {
     const mobile = isMobileCanvas();
     const x = mobile ? 670 : 900;
-    const y = mobile ? playerKey === "ai" ? 345 : 590 : playerKey === "ai" ? 205 : 407;
+    const y = mobile ? playerKey === "ai" ? 410 : 760 : playerKey === "ai" ? 205 : 407;
     const width = mobile ? 82 : 58;
     const height = mobile ? 118 : 84;
     ctx.save();
@@ -1074,8 +1057,8 @@
 
   function drawDice(ctx) {
     if (isMobileCanvas()) {
-      drawDie(ctx, 270, 470, state.dice.player);
-      drawDie(ctx, 510, 470, state.dice.ai);
+      drawDie(ctx, 270, 650, state.dice.player);
+      drawDie(ctx, 510, 650, state.dice.ai);
       return;
     }
     drawDie(ctx, 455, 326, state.dice.player);

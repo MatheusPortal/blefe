@@ -1,6 +1,6 @@
 # Blefe de Mesa
 
-Sexta versão (v0.6) de um jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. A partida acontece localmente contra uma IA, sem servidor ou dependências de execução.
+Sétima versão (v0.7) de um jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. A partida acontece localmente contra uma IA, sem servidor ou dependências de execução.
 
 ## Como iniciar
 
@@ -11,7 +11,8 @@ Abra `index.html` em um navegador moderno. Não é necessário instalar pacotes 
 - Você e a IA começam com 5 vidas e 7 cartas sorteadas.
 - Um baralho extra de 20 cartas fica na mesa. Uma carta é revelada no centro; os dois jogadores dão um palpite antes da revelação.
 - Quem acertar sozinho começa. Se ambos acertarem ou errarem, os dois rolam dados; empate é lançado novamente.
-- Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ver o efeito e clique para jogar; as cartas da IA ficam viradas para baixo no topo.
+- Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ver o efeito e clique para jogar; ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
+- O cronômetro e as opções de palpite aparecem dentro da mesa; vida e cartas são mostradas em indicadores circulares compactos.
 - A mesa se adapta a telas menores e pode ser jogada em celulares.
 - Existe 2% de chance de um único Coringa entrar na partida, substituindo uma carta inicial.
 - Cartas bônus são compradas do baralho extra. Quando ele acaba, as cartas extras descartadas são embaralhadas novamente. A mão da IA fica escondida e a mesa mostra no máximo 20 cartas viradas para baixo.

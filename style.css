@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --bg: #111a24;
+  --bg: #173d35;
   --panel: #18232e;
   --text: #f3f5ef;
   --muted: #9cabb2;
@@ -24,14 +24,13 @@ button { font: inherit; }
 
 .app {
   width: min(1540px, calc(100% - 32px));
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   margin: 0 auto;
 }
 
 .topbar {
-  height: 56px;
+  height: 48px;
   flex: none;
   display: flex;
   align-items: center;
@@ -77,7 +76,7 @@ button { font: inherit; }
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 10px 0 3px;
+  padding: 6px 0 1px;
 }
 
 .table-wrap {
@@ -136,40 +135,19 @@ button { font: inherit; }
   touch-action: manipulation;
 }
 
-.play-panel {
-  flex: none;
-  padding: 10px 14px 6px;
-  border: 1px solid var(--line);
-  border-top: 0;
-  border-radius: 0 0 6px 6px;
-  background: var(--panel);
-}
-
-.turn-message {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.turn-label {
-  color: var(--lime);
-  font: 9px Consolas, "Courier New", monospace;
-  letter-spacing: .12em;
-}
-
-.turn-copy p {
-  margin: 3px 0 0;
-  color: #d3dcdb;
-  font-size: 12px;
-}
-
 .timer {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  left: 14px;
   display: flex;
   align-items: baseline;
   gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid rgba(224, 238, 233, .15);
+  border-radius: 999px;
   color: var(--muted);
+  background: rgba(11, 24, 23, .75);
   font: 10px Consolas, "Courier New", monospace;
 }
 
@@ -179,23 +157,23 @@ button { font: inherit; }
 .timer.is-low strong, .timer.is-low .timer-icon { color: #ff887d; }
 
 .action-area {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
+  position: absolute;
+  z-index: 3;
+  bottom: 8%;
+  left: 34%;
+  display: grid;
+  width: 50%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
-  flex-wrap: wrap;
-  margin-top: 7px;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
+  padding: 10px;
+  border: 1px solid rgba(224, 238, 233, .14);
+  border-radius: 8px;
+  background: rgba(11, 24, 23, .82);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .2);
+  backdrop-filter: blur(4px);
 }
 
-.action-caption {
-  width: 100%;
-  margin: 0 0 1px;
-  color: #95a5aa;
-  font: 8px Consolas, "Courier New", monospace;
-  letter-spacing: .12em;
-}
+.action-area[hidden] { display: none; }
 
 .guess-button, .primary-button, .hint-button {
   min-height: 38px;
@@ -213,8 +191,9 @@ button { font: inherit; }
 }
 
 .guess-button {
-  min-width: 84px;
-  padding: 0 10px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 4px;
   font-size: 11px;
 }
 
@@ -242,7 +221,7 @@ button { font: inherit; }
 .hint-button:hover:not(:disabled) { background: rgba(120, 213, 170, .1); }
 
 .table-footer {
-  min-height: 32px;
+  min-height: 26px;
   flex: none;
   display: flex;
   justify-content: flex-end;
@@ -275,21 +254,18 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 .rules-note { padding-top: 10px; border-top: 1px solid var(--line); color: var(--mint); }
 
 @media (max-width: 650px) {
-  .app { width: calc(100% - 12px); min-height: 100svh; }
+  .app { width: calc(100% - 12px); }
   .topbar { height: 45px; }
   .brand { font-size: 10px; }
   .brand-mark { width: 25px; height: 25px; }
   .text-button { font-size: 10px; }
-  .game-shell { padding: 5px 0 2px; }
+  .game-shell { padding: 5px 0 0; }
   .table-wrap { width: 100%; margin: 0 auto; border-radius: 5px; }
-  .play-panel { padding: 8px 7px 4px; }
-  .turn-message { min-height: 28px; }
-  .turn-copy p { font-size: 10px; }
-  .action-area { min-height: 40px; gap: 5px; margin-top: 5px; padding-top: 6px; }
-  .action-caption { font-size: 7px; }
-  .guess-button { min-width: calc(25% - 5px); min-height: 33px; flex: 1 1 calc(25% - 5px); padding: 0 3px; font-size: 9px; }
+  .timer { top: 9px; left: 9px; padding: 5px 8px; }
+  .action-area { bottom: 16%; left: 27%; width: 68%; gap: 4px; padding: 7px; }
+  .guess-button { min-height: 33px; padding: 0 2px; font-size: 9px; }
   .primary-button, .hint-button { min-height: 33px; font-size: 9px; }
-  .table-footer { min-height: 25px; }
+  .table-footer { min-height: 23px; }
   .restart-button { font-size: 14px; }
   .restart-button span { font-size: 9px; }
   dialog { padding: 15px; }

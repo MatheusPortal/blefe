@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#111a24">
+  <meta name="theme-color" content="#173d35">
   <title>Blefe de Mesa — Cartas & Estratégia</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -20,6 +20,11 @@
     <section class="game-shell" aria-label="Jogo de cartas">
       <div class="table-wrap">
         <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
+        <div class="timer" id="timer" aria-label="Tempo restante" hidden>
+          <span class="timer-icon" aria-hidden="true">◷</span>
+          <strong id="timer-value">60</strong><span>s</span>
+        </div>
+        <div class="action-area" id="action-area" role="group" aria-label="Opções de palpite" hidden></div>
         <div class="table-overlay" id="table-overlay" hidden>
           <div class="table-feedback">
             <p id="table-result" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -27,20 +32,6 @@
           </div>
         </div>
       </div>
-
-      <section class="play-panel" aria-live="polite">
-        <div class="turn-message">
-          <div class="turn-copy">
-            <span class="turn-label" id="turn-label">SUA VEZ</span>
-            <p id="turn-message">Escolha uma carta para jogar virada para baixo.</p>
-          </div>
-          <div class="timer" id="timer" aria-label="Tempo restante">
-            <span class="timer-icon" aria-hidden="true">◷</span>
-            <strong id="timer-value">60</strong><span>s</span>
-          </div>
-        </div>
-        <div class="action-area" id="action-area"></div>
-      </section>
 
       <div class="table-footer">
         <button class="restart-button" id="restart-button" type="button">↻ <span>Nova partida</span></button>
