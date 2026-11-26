@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111a24">
+  <title>Blefe de Mesa — Cartas & Estratégia</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Blefe de Mesa, início">
+        <span class="brand-mark" aria-hidden="true">♠</span>
+        <span>BLEFE <b>DE MESA</b></span>
+      </a>
+      <div class="topbar-status">
+        <span class="offline-dot"></span>
+        PARTIDA OFFLINE
+      </div>
+      <button class="text-button" id="rules-button" type="button">Como jogar</button>
+    </header>
+
+    <section class="game-shell" aria-label="Jogo de cartas">
+      <div class="game-heading">
+        <div>
+          <p class="eyebrow">DUELO DE ADIVINHAÇÃO</p>
+          <h1>Leia o jogo. <span>Vença o blefe.</span></h1>
+        </div>
+        <div class="round-chip">RODADA <strong id="round-number">1</strong></div>
+      </div>
+
+      <div class="table-wrap">
+        <canvas id="game-canvas" width="1100" height="570" aria-label="Mesa do duelo: você contra a inteligência artificial"></canvas>
+      </div>
+
+      <section class="play-panel" aria-live="polite">
+        <div class="turn-message">
+          <div class="turn-copy">
+            <span class="turn-label" id="turn-label">SUA VEZ</span>
+            <p id="turn-message">Escolha uma carta para jogar virada para baixo.</p>
+          </div>
+          <div class="timer" id="timer" aria-label="Tempo restante">
+            <span class="timer-icon" aria-hidden="true">◷</span>
+            <strong id="timer-value">60</strong><span>s</span>
+          </div>
+        </div>
+        <div class="action-area" id="action-area"></div>
+      </section>
+
+      <div class="table-footer">
+        <p id="game-log">A partida começou. Escolha sua primeira carta.</p>
+        <button class="restart-button" id="restart-button" type="button">↻ <span>Nova partida</span></button>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <span>Um jogo de estratégia, memória e um pouco de sorte.</span>
+      <span>v0.1 · Jogo local, sem internet</span>
+    </footer>
+  </main>
+
+  <dialog id="rules-dialog" aria-labelledby="rules-title">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">REGRAS DA PARTIDA</p>
+        <h2 id="rules-title">Como jogar</h2>
+      </div>
+      <button class="icon-button" id="close-rules" type="button" aria-label="Fechar regras">×</button>
+    </div>
+    <div class="rules-content">
+      <p>Você e a IA começam com <strong>5 vidas</strong>. Na sua vez, jogue uma carta sem mostrá-la. A IA tentará adivinhar; quando a IA jogar, será sua vez de adivinhar.</p>
+      <ul>
+        <li><span>🦁 Leão</span> — se o palpite estiver errado, quem adivinhou perde 2 vidas.</li>
+        <li><span>🐇 Coelho</span> — se acertar, quem adivinhou ganha 1 ponto de sorte.</li>
+        <li><span>🐄 Vaca</span> — se errar, quem adivinhou recebe 2 cartas bônus.</li>
+        <li><span>🐟 Peixe</span> — não tem efeito especial.</li>
+        <li><span>🃏 Coringa</span> — troca o palpite por uma carta aleatória, tira 1 vida e dá 3 cartas bônus a quem adivinhou.</li>
+      </ul>
+      <p>Cada jogador começa com 2 ou 3 cartas de cada tipo comum. Há 2% de chance de um único Coringa aparecer na partida. Cartas jogadas voltam à mão quando ela acaba. A sorte pode ser gasta durante um palpite para eliminar uma opção incorreta. Você tem 60 segundos por ação; ao acabar, o jogo escolhe por você.</p>
+      <p class="rules-note">Vence quem reduzir a vida do adversário a zero. Esta é a primeira versão: regras e IA podem evoluir.</p>
+    </div>
+  </dialog>
+
+  <script src="game.js"></script>
+</body>
+</html>
