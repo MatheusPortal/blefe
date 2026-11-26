@@ -1,18 +1,23 @@
 (() => {
   "use strict";
 
-  const CARD_TYPES = ["leao", "coelho", "vaca", "peixe", "coringa"];
-  const COMMON_CARDS = CARD_TYPES.slice(0, 4);
+  const CARD_TYPES = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga", "coringa"];
+  const COMMON_CARDS = CARD_TYPES.filter((type) => type !== "coringa");
   const CARDS = {
-    leao: { name: "Leão", emoji: "🦁", color: "#e9a16f" },
-    coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa" },
-    vaca: { name: "Vaca", emoji: "🐄", color: "#f0d477" },
-    peixe: { name: "Peixe", emoji: "🐟", color: "#7ec9e8" },
-    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a" }
+    leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro: perde 2 vidas." },
+    coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa", effect: "Acerto: ganha 1 sorte." },
+    vaca: { name: "Vaca", emoji: "🐄", color: "#f0d477", effect: "Erro: compra 2 extras." },
+    peixe: { name: "Peixe", emoji: "🐟", color: "#7ec9e8", effect: "Acerto: +1 sorte. Erro: perde sorte ou vida." },
+    tigre: { name: "Tigre", emoji: "🐅", color: "#ec8b51", effect: "Erro: perde 1 vida." },
+    macaco: { name: "Macaco", emoji: "🐒", color: "#c49668", effect: "Acerto: compra 1 extra." },
+    elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro: quem jogou recupera 1 vida." },
+    tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Acerto: ganha 1 escudo." },
+    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Troca o palpite: -1 vida e compra 3 extras." }
   };
   const TURN_SECONDS = 60;
   const CARD_WIDTH = 106;
   const CARD_HEIGHT = 146;
+  const EXTRA_DECK_SIZE = 20;
   const MAX_FACE_DOWN_CARDS = 20;
   const canvas = document.querySelector("#game-canvas");
   const context = canvas.getContext("2d");
@@ -29,6 +34,7 @@
   let clockInterval;
   let aiTimeout;
   let dealInterval;
+  let diceInterval;
   let hoverCard = -1;
 
   function shuffle(items) {
@@ -46,13 +52,29 @@
     ));
   }
 
+  function createExtraDeck() {
+    const deck = COMMON_CARDS.flatMap((type) => [type, type]);
+    while (deck.length < EXTRA_DECK_SIZE) {
+      deck.push(COMMON_CARDS[Math.floor(Math.random() * COMMON_CARDS.length)]);
+    }
+    return shuffle(deck);
+  }
+
   function makePlayer(name) {
-    return { name, hp: 5, luck: 0, hand: createHand() };
+    return {
+      name,
+      hp: 5,
+      luck: 0,
+      shields: 0,
+      hand: createHand(),
+      extraCardsHeld: Object.fromEntries(COMMON_CARDS.map((type) => [type, 0]))
+    };
   }
 
   function clearGameTimers() {
     window.clearInterval(clockInterval);
     window.clearInterval(dealInterval);
+    window.clearInterval(diceInterval);
     window.clearTimeout(aiTimeout);
   }
 
@@ -61,10 +83,15 @@
     hoverCard = -1;
     state = {
       players: { player: makePlayer("Você"), ai: makePlayer("IA") },
+      extraDeck: createExtraDeck(),
+      extraDiscard: [],
       phase: "dealing",
       round: 1,
       seconds: TURN_SECONDS,
       pending: null,
+      setupCard: null,
+      setupGuesses: { player: null, ai: null },
+      guesses: {},
       lastReveal: null,
       playerPlayHistory: Object.fromEntries(CARD_TYPES.map((type) => [type, 0])),
       playerGuessHistory: Object.fromEntries(CARD_TYPES.map((type) => [type, 0])),
@@ -73,18 +100,18 @@
       hintUsed: false,
       gameOver: false,
       dealt: { player: 0, ai: 0 },
-      coinFrame: 0,
       startingPlayer: null,
       aiInitiallyHadJoker: false,
-      message: "Embaralhando e distribuindo 7 cartas para cada jogador...",
-      log: "As cartas estão sendo embaralhadas."
+      dice: { player: 1, ai: 1 },
+      diceFrame: 0,
+      message: "Embaralhando as cartas...",
+      log: "Distribuindo a mão."
     };
 
     if (Math.random() < 0.02) {
       const recipient = Math.random() < 0.5 ? state.players.player : state.players.ai;
       const replacementIndex = Math.floor(Math.random() * recipient.hand.length);
       recipient.hand[replacementIndex] = "coringa";
-      state.log = "Um Coringa foi embaralhado na partida.";
     }
     state.aiInitiallyHadJoker = state.players.ai.hand.includes("coringa");
 
@@ -102,46 +129,46 @@
       if (drawIndex < drawOrder.length) {
         state.dealt[drawOrder[drawIndex]] += 1;
         drawIndex += 1;
-        state.message = `Distribuindo cartas... ${state.dealt.player + state.dealt.ai}/14`;
-        state.log = "Cada jogador recebe 7 cartas sorteadas.";
+        state.message = "Distribuindo as mãos...";
         render();
         return;
       }
 
-      state.phase = "coin-toss";
-      state.message = "Sorteando quem começa...";
-      state.log = "A partida vai começar.";
-      state.coinFrame = 0;
-      render();
       window.clearInterval(dealInterval);
-      dealInterval = window.setInterval(() => {
-        state.coinFrame += 1;
-        render();
-        if (state.coinFrame < 10) return;
-
-        window.clearInterval(dealInterval);
-        state.startingPlayer = Math.random() < 0.5 ? "player" : "ai";
-        const starter = state.players[state.startingPlayer].name;
-        state.log = `O sorteio decidiu: ${starter} começa.`;
-        if (state.startingPlayer === "player") {
-          state.phase = "player-play";
-          state.message = "Você começa! Clique em uma das suas cartas para jogá-la.";
-          beginTimedPhase();
-          render();
-        } else {
-          state.message = "A IA começa! Prepare-se para adivinhar.";
-          render();
-          aiTimeout = window.setTimeout(startAiTurn, 700);
-        }
-      }, 120);
+      beginSetupChallenge();
     }, 105);
+  }
+
+  function drawExtraCard() {
+    if (state.extraDeck.length === 0 && state.extraDiscard.length > 0) {
+      state.extraDeck = shuffle(state.extraDiscard);
+      state.extraDiscard = [];
+    }
+    return state.extraDeck.pop() || null;
+  }
+
+  function beginSetupChallenge() {
+    const deckCounts = Object.fromEntries(COMMON_CARDS.map((type) => [type, 0]));
+    for (const type of state.extraDeck) deckCounts[type] += 1;
+    const totalCards = state.extraDeck.length;
+    const probabilities = Object.fromEntries(COMMON_CARDS.map((type) => [
+      type,
+      totalCards ? deckCounts[type] / totalCards : 1 / COMMON_CARDS.length
+    ]));
+    state.setupGuesses.ai = chooseGuess(probabilities, false, COMMON_CARDS);
+    state.setupCard = drawExtraCard();
+    state.phase = "setup-guess";
+    state.message = "Adivinhe a carta para disputar a iniciativa.";
+    state.log = "Palpite a carta central.";
+    beginTimedPhase();
+    render();
   }
 
   function beginTimedPhase() {
     window.clearInterval(clockInterval);
     state.seconds = TURN_SECONDS;
     clockInterval = window.setInterval(() => {
-      if (state.gameOver || !["player-play", "player-guess"].includes(state.phase)) return;
+      if (state.gameOver || !["player-play", "player-guess", "setup-guess"].includes(state.phase)) return;
       state.seconds -= 1;
       if (state.seconds <= 0) {
         state.seconds = 0;
@@ -156,13 +183,98 @@
     if (state.phase === "player-play") {
       const hand = state.players.player.hand;
       const type = hand[Math.floor(Math.random() * hand.length)];
-      state.log = `O tempo acabou. Você jogou ${CARDS[type].name} automaticamente.`;
+      state.log = "Tempo esgotado: carta escolhida automaticamente.";
       playCard("player", type);
     } else if (state.phase === "player-guess") {
       const choices = CARD_TYPES.filter((type) => type !== state.eliminated);
-      const guess = choices[Math.floor(Math.random() * choices.length)];
-      state.log = `O tempo acabou. Seu palpite foi ${CARDS[guess].name}.`;
-      resolveGuess("player", guess);
+      submitGuess("player", choices[Math.floor(Math.random() * choices.length)]);
+    } else if (state.phase === "setup-guess") {
+      const type = COMMON_CARDS[Math.floor(Math.random() * COMMON_CARDS.length)];
+      submitSetupGuess(type);
+    }
+  }
+
+  function submitSetupGuess(type) {
+    if (state.phase !== "setup-guess") return;
+    window.clearInterval(clockInterval);
+    state.setupGuesses.player = type;
+    state.phase = "setup-revealing";
+    state.message = "Palpites na mesa...";
+    state.log = "Revelando a carta.";
+    render();
+    aiTimeout = window.setTimeout(resolveSetupChallenge, 650);
+  }
+
+  function resolveSetupChallenge() {
+    if (state.phase !== "setup-revealing") return;
+    const playerCorrect = state.setupGuesses.player === state.setupCard;
+    const aiCorrect = state.setupGuesses.ai === state.setupCard;
+    state.lastReveal = { actualType: state.setupCard };
+    state.extraDiscard.push(state.setupCard);
+
+    if (playerCorrect !== aiCorrect) {
+      const starter = playerCorrect ? "player" : "ai";
+      const name = state.players[starter].name;
+      state.phase = "setup-result";
+      state.message = `${name} acertou e começa.`;
+      state.log = `${CARDS[state.setupCard].emoji} ${name} abre a partida.`;
+      render();
+      aiTimeout = window.setTimeout(() => startTurn(starter), 950);
+      return;
+    }
+
+    state.phase = "dice-roll";
+    state.message = "Empate nos palpites. Dados!";
+    state.log = "Desempate na mesa.";
+    render();
+    rollDice();
+  }
+
+  function rollDice() {
+    if (state.phase !== "dice-roll") return;
+    state.diceFrame = 0;
+    window.clearInterval(diceInterval);
+    diceInterval = window.setInterval(() => {
+      state.diceFrame += 1;
+      state.dice.player = 1 + Math.floor(Math.random() * 6);
+      state.dice.ai = 1 + Math.floor(Math.random() * 6);
+      render();
+      if (state.diceFrame < 8) return;
+
+      window.clearInterval(diceInterval);
+      state.dice.player = 1 + Math.floor(Math.random() * 6);
+      state.dice.ai = 1 + Math.floor(Math.random() * 6);
+      if (state.dice.player === state.dice.ai) {
+        state.message = "Dados empatados. Mais uma!";
+        state.log = `${state.dice.player} × ${state.dice.ai} · novo lance`;
+        render();
+        aiTimeout = window.setTimeout(rollDice, 550);
+        return;
+      }
+
+      const starter = state.dice.player > state.dice.ai ? "player" : "ai";
+      const name = state.players[starter].name;
+      state.message = `${state.dice.player} × ${state.dice.ai} · ${name} começa.`;
+      state.log = `${name} venceu no dado.`;
+      render();
+      aiTimeout = window.setTimeout(() => startTurn(starter), 950);
+    }, 100);
+  }
+
+  function startTurn(playerKey) {
+    if (state.gameOver) return;
+    state.startingPlayer = playerKey;
+    state.phase = playerKey === "player" ? "player-play" : "ai-play";
+    state.setupCard = null;
+    state.guesses = {};
+    state.lastReveal = null;
+    state.message = playerKey === "player" ? "Sua vez." : "A IA começa.";
+    state.log = `${state.players[playerKey].name} começa.`;
+    if (playerKey === "player") {
+      beginTimedPhase();
+      render();
+    } else {
+      startAiTurn();
     }
   }
 
@@ -170,8 +282,10 @@
     const player = state.players[playerKey];
     const drawn = [];
     for (let index = 0; index < count; index += 1) {
-      const type = COMMON_CARDS[Math.floor(Math.random() * COMMON_CARDS.length)];
+      const type = drawExtraCard();
+      if (!type) break;
       player.hand.push(type);
+      player.extraCardsHeld[type] += 1;
       drawn.push(type);
     }
     return drawn;
@@ -185,24 +299,29 @@
 
     window.clearInterval(clockInterval);
     player.hand.splice(cardIndex, 1);
+    if (player.extraCardsHeld[type] > 0) {
+      player.extraCardsHeld[type] -= 1;
+      state.extraDiscard.push(type);
+    }
     if (playerKey === "player") state.playerPlayHistory[type] += 1;
     if (playerKey === "ai") state.aiPlayHistory[type] += 1;
 
     state.pending = { owner: playerKey, type };
     state.lastReveal = null;
+    state.guesses = {};
     state.eliminated = null;
     state.hintUsed = false;
 
     if (playerKey === "player") {
       state.phase = "ai-guess";
-      state.message = "A IA está analisando suas jogadas anteriores...";
+      state.message = "A IA está escolhendo o palpite.";
       render();
-      aiTimeout = window.setTimeout(aiMakeGuess, 900);
+      aiTimeout = window.setTimeout(aiMakeGuess, 800);
       return;
     }
 
     state.phase = "player-guess";
-    state.message = "A IA jogou uma carta virada para baixo. Qual carta é?";
+    state.message = "Adivinhe a carta no centro.";
     beginTimedPhase();
     render();
   }
@@ -211,9 +330,7 @@
     const weights = {};
     for (const type of CARD_TYPES) {
       if (type === "coringa") {
-        const aiHasJoker = state.aiInitiallyHadJoker;
-        const playerUsedJoker = state.playerPlayHistory.coringa > 0;
-        weights[type] = aiHasJoker || playerUsedJoker ? 0 : 0.04;
+        weights[type] = state.aiInitiallyHadJoker || state.playerPlayHistory.coringa > 0 ? 0 : 0.04;
       } else {
         weights[type] = 1 + state.playerPlayHistory[type] * 1.3;
       }
@@ -235,8 +352,8 @@
     return options[options.length - 1];
   }
 
-  function chooseGuess(probabilities, useLuck) {
-    const available = [...CARD_TYPES];
+  function chooseGuess(probabilities, useLuck, options = CARD_TYPES) {
+    const available = [...options];
     if (useLuck) {
       const leastLikely = available
         .filter((type) => probabilities[type] > 0)
@@ -247,30 +364,128 @@
     return sampleByScore(available, (guess) => {
       let value = 0;
       for (const actual of CARD_TYPES) {
-        const chance = probabilities[actual];
-        if (actual === "coringa") {
-          value -= chance * 0.65;
-        } else if (actual === "leao" && guess !== actual) {
-          value -= chance * 2;
-        } else if (actual === "vaca" && guess !== actual) {
-          value += chance * 1.2;
-        } else if (actual === "coelho" && guess === actual) {
-          value += chance * 0.45;
-        }
+        const chance = probabilities[actual] || 0;
+        if (actual === "leao" && guess !== actual) value -= chance * 2;
+        if (actual === "tigre" && guess !== actual) value -= chance;
+        if (actual === "coelho" && guess === actual) value += chance * 0.45;
+        if (actual === "vaca" && guess !== actual) value += chance * 0.7;
+        if (actual === "peixe") value += chance * (guess === actual ? 0.4 : -0.5);
+        if (actual === "macaco" && guess === actual) value += chance * 0.55;
+        if (actual === "elefante" && guess !== actual) value -= chance * 0.45;
+        if (actual === "tartaruga" && guess === actual) value += chance * 0.5;
+        if (actual === "coringa") value -= chance * 0.6;
       }
       return value;
-    }, 0.8);
+    }, 0.9);
   }
 
   function aiMakeGuess() {
     if (state.gameOver || state.phase !== "ai-guess") return;
     const ai = state.players.ai;
-    const probabilities = probabilityOfPlayerCard();
     const useLuck = ai.luck > 0 && Math.random() < 0.65;
     if (useLuck) ai.luck -= 1;
-    const guess = chooseGuess(probabilities, useLuck);
-    state.log = `A IA usou ${useLuck ? "um ponto de sorte e " : ""}seu histórico para decidir.`;
-    resolveGuess("ai", guess);
+    const guess = chooseGuess(probabilityOfPlayerCard(), useLuck);
+    submitGuess("ai", guess);
+  }
+
+  function submitGuess(guesserKey, guess) {
+    if (!state.pending || !["player-guess", "ai-guess"].includes(state.phase)) return;
+    window.clearInterval(clockInterval);
+    state.guesses[guesserKey] = guess;
+    state.phase = "revealing";
+    state.message = "Palpite na mesa...";
+    state.log = "Revelando a carta.";
+    render();
+    aiTimeout = window.setTimeout(() => resolveGuess(guesserKey, guess), 650);
+  }
+
+  function applyDamage(player, amount) {
+    if (player.shields > 0) {
+      player.shields -= 1;
+      return { blocked: true, lost: 0 };
+    }
+    const lost = Math.min(player.hp, amount);
+    player.hp -= lost;
+    return { blocked: false, lost };
+  }
+
+  function resolveGuess(guesserKey, guess) {
+    if (state.gameOver || !state.pending) return;
+    const { owner, type: actualType } = state.pending;
+    const guesser = state.players[guesserKey];
+    const playedBy = state.players[owner];
+    const selectedGuess = guess;
+    let correct = guess === actualType;
+    let summary;
+
+    if (guesserKey === "player") state.playerGuessHistory[guess] += 1;
+
+    if (actualType === "coringa") {
+      const alternatives = COMMON_CARDS.filter((type) => type !== guess);
+      const swappedTo = alternatives[Math.floor(Math.random() * alternatives.length)] || COMMON_CARDS[0];
+      state.guesses[guesserKey] = swappedTo;
+      correct = false;
+      const damage = applyDamage(guesser, 1);
+      const bonus = drawBonusCards(guesserKey, 3);
+      summary = `🃏 Coringa · ${damage.blocked ? "escudo" : "−1 vida"} · +${bonus.length} extras`;
+    } else if (actualType === "leao" && !correct) {
+      const damage = applyDamage(guesser, 2);
+      summary = `🦁 Leão · ${damage.blocked ? "escudo" : "−2 vidas"}`;
+    } else if (actualType === "coelho" && correct) {
+      guesser.luck += 1;
+      summary = "🐇 Coelho · +1 sorte";
+    } else if (actualType === "vaca" && !correct) {
+      const bonus = drawBonusCards(guesserKey, 2);
+      summary = `🐄 Vaca · +${bonus.length} extras`;
+    } else if (actualType === "peixe") {
+      if (correct) {
+        guesser.luck += 1;
+        summary = "🐟 Peixe · +1 sorte";
+      } else if (guesser.luck > 0) {
+        guesser.luck -= 1;
+        summary = "🐟 Peixe · −1 sorte";
+      } else {
+        const damage = applyDamage(guesser, 1);
+        summary = `🐟 Peixe · ${damage.blocked ? "escudo" : "−1 vida"}`;
+      }
+    } else if (actualType === "tigre" && !correct) {
+      const damage = applyDamage(guesser, 1);
+      summary = `🐅 Tigre · ${damage.blocked ? "escudo" : "−1 vida"}`;
+    } else if (actualType === "macaco" && correct) {
+      const bonus = drawBonusCards(guesserKey, 1);
+      summary = `🐒 Macaco · +${bonus.length} extra`;
+    } else if (actualType === "elefante" && !correct) {
+      const healed = Math.min(1, 5 - playedBy.hp);
+      playedBy.hp += healed;
+      summary = `🐘 Elefante · ${healed ? "+1 vida" : "vida cheia"}`;
+    } else if (actualType === "tartaruga" && correct) {
+      guesser.shields += 1;
+      summary = "🐢 Tartaruga · +1 escudo";
+    } else {
+      summary = correct ? "Palpite certo" : "Palpite errado";
+    }
+
+    state.phase = "result";
+    state.lastReveal = { owner, actualType, guess: selectedGuess, correct, summary };
+    state.pending = null;
+    state.message = summary;
+    state.log = summary;
+
+    if (guesser.hp <= 0) {
+      guesser.hp = 0;
+      endGame(owner, `${playedBy.name} venceu · vida zerada`);
+    } else if (playedBy.hand.length === 0) {
+      endGame(owner, `${playedBy.name} venceu · sem cartas`);
+    }
+    render();
+  }
+
+  function endGame(winnerKey, reason) {
+    state.phase = "game-over";
+    state.gameOver = true;
+    state.winner = winnerKey;
+    state.message = winnerKey === "player" ? `Vitória · ${reason}` : `Derrota · ${reason}`;
+    state.log = reason;
   }
 
   function useLuck() {
@@ -280,67 +495,8 @@
     state.eliminated = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
     state.hintUsed = true;
     state.players.player.luck -= 1;
-    state.log = `Sua sorte revelou que não é ${CARDS[state.eliminated].name}.`;
+    state.log = `Sorte: não é ${CARDS[state.eliminated].name}.`;
     render();
-  }
-
-  function resolveGuess(guesserKey, guess) {
-    if (state.gameOver || !state.pending) return;
-    window.clearInterval(clockInterval);
-    const { owner, type: actualType } = state.pending;
-    const guesser = state.players[guesserKey];
-    const playedBy = state.players[owner];
-    let correct = guess === actualType;
-    let detail = "";
-    let bonusCards = [];
-
-    if (guesserKey === "player") state.playerGuessHistory[guess] += 1;
-
-    if (actualType === "coringa") {
-      const alternatives = COMMON_CARDS.filter((type) => type !== guess);
-      const swappedTo = alternatives[Math.floor(Math.random() * alternatives.length)] || COMMON_CARDS[0];
-      correct = false;
-      guesser.hp -= 1;
-      bonusCards = drawBonusCards(guesserKey, 3);
-      detail = `O Coringa trocou o palpite para ${CARDS[swappedTo].name}. Você perde 1 vida e recebe 3 cartas bônus.`;
-    } else if (!correct && actualType === "leao") {
-      guesser.hp -= 2;
-      detail = `${guesser.name} errou e perdeu 2 vidas.`;
-    } else if (correct && actualType === "coelho") {
-      guesser.luck += 1;
-      detail = `${guesser.name} acertou e ganhou 1 ponto de sorte.`;
-    } else if (!correct && actualType === "vaca") {
-      bonusCards = drawBonusCards(guesserKey, 2);
-      detail = `${guesser.name} errou e recebeu 2 cartas bônus.`;
-    } else if (actualType === "peixe") {
-      detail = "Peixe: nenhum efeito especial.";
-    } else {
-      detail = correct ? `${guesser.name} acertou o palpite.` : `${guesser.name} errou o palpite.`;
-    }
-
-    state.phase = "result";
-    state.lastReveal = { owner, actualType, guess, correct, detail };
-    state.pending = null;
-    state.message = actualType === "coringa"
-      ? "O Coringa mudou as regras do palpite!"
-      : `${correct ? "Acertou!" : "Não foi dessa vez."} ${detail}`;
-    state.log = `${playedBy.name} revelou ${CARDS[actualType].name}. ${detail}`;
-
-    if (guesser.hp <= 0) {
-      guesser.hp = 0;
-      endGame(owner, `${playedBy.name} venceu: ${guesser.name} ficou sem vidas.`);
-    } else if (playedBy.hand.length === 0) {
-      endGame(owner, `${playedBy.name} venceu: ficou sem cartas na mão.`);
-    }
-    render();
-  }
-
-  function endGame(winnerKey, reason) {
-    state.phase = "game-over";
-    state.gameOver = true;
-    state.winner = winnerKey;
-    state.message = winnerKey === "player" ? `Vitória! ${reason}` : `Fim de jogo. ${reason}`;
-    state.log = reason;
   }
 
   function continueAfterResult() {
@@ -351,8 +507,8 @@
     }
     state.round += 1;
     state.phase = "player-play";
-    state.message = "Sua vez! Clique em uma das suas cartas para jogá-la.";
-    state.log = `Rodada ${state.round}. Sua vez de jogar.`;
+    state.message = "Sua vez.";
+    state.log = `Rodada ${state.round}`;
     beginTimedPhase();
     render();
   }
@@ -360,19 +516,18 @@
   function startAiTurn() {
     if (state.gameOver) return;
     if (state.players.ai.hand.length === 0) {
-      endGame("ai", "A IA venceu: ficou sem cartas na mão.");
+      endGame("ai", "IA sem cartas");
       render();
       return;
     }
     state.phase = "ai-play";
-    state.message = "A IA está escolhendo uma carta...";
+    state.message = "A IA joga...";
     render();
     aiTimeout = window.setTimeout(() => {
       if (state.gameOver || state.phase !== "ai-play") return;
       const type = chooseAiCard();
-      state.log = "A IA escolheu uma carta usando estratégia e um pouco de imprevisibilidade.";
       playCard("ai", type);
-    }, 800);
+    }, 750);
   }
 
   function chooseAiCard() {
@@ -385,15 +540,20 @@
     ]));
     const playerIsWeak = state.players.player.hp <= 2;
     const scores = {
-      leao: 2 * (1 - guessProbability.leao) + (playerIsWeak ? 0.7 : 0) - state.aiPlayHistory.leao * 0.4,
-      coelho: -0.45 * guessProbability.coelho - state.aiPlayHistory.coelho * 0.4,
-      vaca: -0.45 * (1 - guessProbability.vaca) - state.aiPlayHistory.vaca * 0.4,
-      peixe: 0.05 - state.aiPlayHistory.peixe * 0.4,
-      coringa: 0.25 - state.aiPlayHistory.coringa * 0.4
+      leao: 2 * (1 - guessProbability.leao) + (playerIsWeak ? 0.7 : 0),
+      coelho: -0.45 * guessProbability.coelho,
+      vaca: -0.45 * (1 - guessProbability.vaca),
+      peixe: 0.8 - guessProbability.peixe,
+      tigre: 1 - guessProbability.tigre,
+      macaco: -0.55 * guessProbability.macaco,
+      elefante: 0.35 * (1 - guessProbability.elefante),
+      tartaruga: -0.5 * guessProbability.tartaruga,
+      coringa: 0.15
     };
+    const mixedScores = (type) => scores[type] - state.aiPlayHistory[type] * 0.4;
 
     if (Math.random() < 0.65) return hand[Math.floor(Math.random() * hand.length)];
-    return sampleByScore(hand, (type) => scores[type], 1.6);
+    return sampleByScore(hand, mixedScores, 1.6);
   }
 
   function render() {
@@ -407,39 +567,36 @@
   }
 
   function getCanvasDescription() {
-    const playerCards = state.players.player.hand.length;
-    const aiCards = state.players.ai.hand.length;
-    return `Mesa de cartas. Você tem ${playerCards} cartas e ${state.players.player.hp} vidas. A IA tem ${aiCards} cartas e ${state.players.ai.hp} vidas. ${state.message}`;
+    return `Você: ${state.players.player.hand.length} cartas, ${state.players.player.hp} vidas. IA: ${state.players.ai.hand.length} cartas, ${state.players.ai.hp} vidas. ${state.message}`;
   }
 
   function renderActions() {
     actionArea.replaceChildren();
-    turnLabel.textContent = ["player-play", "player-guess"].includes(state.phase)
+    turnLabel.textContent = ["player-play", "player-guess", "setup-guess"].includes(state.phase)
       ? "SUA VEZ"
-      : ["result", "game-over"].includes(state.phase) ? "RESULTADO" : "VEZ DA IA";
+      : ["result", "game-over", "setup-result"].includes(state.phase) ? "RESULTADO" : "MESA";
 
-    if (state.phase === "player-play") {
-      addCaption("CLIQUE EM UMA DAS SUAS CARTAS NA MESA PARA JOGAR");
+    if (state.phase === "setup-guess") {
+      addCaption("PALPITE PARA ABRIR A PARTIDA");
+      for (const type of COMMON_CARDS) addGuessButton(type, () => submitSetupGuess(type));
+    } else if (state.phase === "player-play") {
+      addCaption("CLIQUE EM UMA CARTA");
     } else if (state.phase === "player-guess") {
-      addCaption("QUAL CARTA A IA JOGOU?");
+      addCaption("PALPITE");
       for (const type of CARD_TYPES) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "guess-button";
+        const button = addGuessButton(type, () => submitGuess("player", type));
         button.disabled = type === state.eliminated;
-        button.textContent = `${CARDS[type].emoji} ${CARDS[type].name}`;
-        button.addEventListener("click", () => resolveGuess("player", type));
-        actionArea.append(button);
       }
       const hint = document.createElement("button");
       hint.type = "button";
       hint.className = "hint-button";
       hint.disabled = state.players.player.luck < 1 || state.hintUsed;
-      hint.textContent = `✦ Usar sorte (${state.players.player.luck})`;
+      hint.textContent = `✦ ${state.players.player.luck}`;
+      hint.setAttribute("aria-label", `Usar sorte: ${state.players.player.luck}`);
       hint.addEventListener("click", useLuck);
       actionArea.append(hint);
     } else if (state.phase === "result") {
-      addCaption(`CARTA REVELADA: ${CARDS[state.lastReveal.actualType].emoji} ${CARDS[state.lastReveal.actualType].name}`);
+      addCaption(`${CARDS[state.lastReveal.actualType].emoji} ${CARDS[state.lastReveal.actualType].name}`);
       const next = document.createElement("button");
       next.type = "button";
       next.className = "primary-button";
@@ -447,7 +604,7 @@
       next.addEventListener("click", continueAfterResult);
       actionArea.append(next);
     } else if (state.phase === "game-over") {
-      addCaption("FIM DE JOGO");
+      addCaption(state.winner === "player" ? "VITÓRIA" : "FIM DE JOGO");
       const restart = document.createElement("button");
       restart.type = "button";
       restart.className = "primary-button";
@@ -455,12 +612,24 @@
       restart.addEventListener("click", startGame);
       actionArea.append(restart);
     } else if (state.phase === "dealing") {
-      addCaption("EMBARALHANDO E DISTRIBUINDO AS CARTAS...");
-    } else if (state.phase === "coin-toss") {
-      addCaption("SORTEANDO QUEM COMEÇA...");
+      addCaption("DISTRIBUINDO...");
+    } else if (state.phase === "setup-revealing" || state.phase === "revealing") {
+      addCaption("REVELANDO...");
+    } else if (state.phase === "dice-roll") {
+      addCaption("DESEMPATE · DADOS");
     } else {
-      addCaption(state.phase === "ai-guess" ? "A IA ESTÁ PENSANDO..." : "A IA ESTÁ ESCOLHENDO UMA CARTA...");
+      addCaption("A IA PENSA...");
     }
+  }
+
+  function addGuessButton(type, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "guess-button";
+    button.textContent = `${CARDS[type].emoji} ${CARDS[type].name}`;
+    button.addEventListener("click", onClick);
+    actionArea.append(button);
+    return button;
   }
 
   function addCaption(text) {
@@ -473,7 +642,7 @@
   function updateTimer() {
     timerValue.textContent = String(state.seconds);
     timer.classList.toggle("is-low", state.seconds <= 10);
-    timer.hidden = !["player-play", "player-guess"].includes(state.phase);
+    timer.hidden = !["player-play", "player-guess", "setup-guess"].includes(state.phase);
   }
 
   function drawTable() {
@@ -512,32 +681,29 @@
     ctx.ellipse(width / 2, height / 2 + 5, 466, 239, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    drawPlayerPanel(ctx, 22, 24, state.players.ai, "OPONENTE", false);
+    drawPlayerPanel(ctx, 916, 24, state.players.ai, "OPONENTE", false);
     drawPlayerPanel(ctx, 916, 524, state.players.player, "VOCÊ", true);
+    drawExtraDeck(ctx);
     drawAiHand(ctx);
     drawCenter(ctx, width / 2, 326);
     drawPlayerHand(ctx);
+    drawGuessMarkers(ctx);
 
-    ctx.fillStyle = "rgba(233, 243, 224, .72)";
-    ctx.font = "11px Consolas, monospace";
+    ctx.fillStyle = "rgba(233, 243, 224, .66)";
+    ctx.font = "10px Consolas, monospace";
     ctx.textAlign = "center";
-    const phaseText = state.phase === "dealing" ? "EMBARALHANDO AS CARTAS"
-      : state.phase === "coin-toss" ? "SORTEANDO QUEM COMEÇA"
-        : state.phase === "player-play" ? "SUA VEZ DE JOGAR"
-          : state.phase === "player-guess" ? "SUA VEZ DE ADIVINHAR"
-            : ["result", "game-over"].includes(state.phase) ? "CARTA REVELADA"
-              : "A IA ESTÁ PENSANDO";
+    const phaseText = ["setup-guess", "setup-revealing", "setup-result", "dice-roll"].includes(state.phase)
+      ? state.phase === "dice-roll" ? "DESEMPATE" : "PALPITE DE ABERTURA"
+      : state.phase === "player-play" ? "SUA VEZ"
+        : state.phase === "player-guess" ? "SEU PALPITE"
+          : ["result", "game-over"].includes(state.phase) ? "REVELADA"
+            : state.phase === "dealing" ? "EMBARALHANDO" : "A IA PENSA";
     ctx.fillText(phaseText, width / 2, 250);
 
-    if (state.phase === "coin-toss") drawCoin(ctx, width / 2, 326);
+    if (state.phase === "dice-roll") drawDice(ctx);
 
     if (state.lastReveal && ["result", "game-over"].includes(state.phase)) {
-      ctx.fillStyle = "rgba(11, 24, 23, .82)";
-      roundRect(ctx, width / 2 - 200, 425, 400, 48, 9);
-      ctx.fill();
-      ctx.fillStyle = "#ecf2e6";
-      ctx.font = "12px 'Segoe UI', sans-serif";
-      ctx.fillText(state.lastReveal.detail, width / 2, 454, 370);
+      drawResultToast(ctx, state.lastReveal.summary);
     }
   }
 
@@ -567,10 +733,39 @@
     ctx.textAlign = "right";
     ctx.fillStyle = "#e5eddf";
     ctx.fillText(`${player.hand.length} CARTAS`, x + 151, y + 75);
-    if (player.luck > 0) {
+    if (player.luck > 0 || player.shields > 0) {
       ctx.fillStyle = "#d9c477";
-      ctx.fillText(`✦ ${player.luck}`, x + 151, y + 19);
+      ctx.fillText(`✦${player.luck}  ⛨${player.shields}`, x + 151, y + 19);
     }
+    ctx.restore();
+  }
+
+  function drawExtraDeck(ctx) {
+    const x = 48;
+    const y = 272;
+    const cardWidth = 76;
+    const cardHeight = 108;
+    const canDraw = state.extraDeck.length > 0 || state.extraDiscard.length > 0;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(226, 238, 221, .72)";
+    ctx.font = "9px Consolas, monospace";
+    ctx.fillText("EXTRAS", x + cardWidth / 2, y - 15);
+    if (canDraw) {
+      const offset = state.extraDeck.length > 1 ? 4 : 0;
+      drawCard(ctx, x + offset, y + offset, null, cardWidth, cardHeight);
+      drawCard(ctx, x, y, null, cardWidth, cardHeight);
+    } else {
+      ctx.fillStyle = "rgba(15, 33, 29, .55)";
+      roundRect(ctx, x, y, cardWidth, cardHeight, 9);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(208, 235, 190, .25)";
+      roundRect(ctx, x + 4, y + 4, cardWidth - 8, cardHeight - 8, 7);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#c9ef74";
+    ctx.font = "bold 11px Consolas, monospace";
+    ctx.fillText(String(state.extraDeck.length), x + cardWidth / 2, y + cardHeight + 20);
     ctx.restore();
   }
 
@@ -579,7 +774,7 @@
     const visibleCount = Math.min(handSize, MAX_FACE_DOWN_CARDS);
     const cardWidth = 94;
     const cardHeight = 132;
-    const spacing = visibleCount > 1 ? Math.min(38, 670 / (visibleCount - 1)) : 0;
+    const spacing = visibleCount > 1 ? Math.min(30, 520 / (visibleCount - 1)) : 0;
     const startX = 550 - ((visibleCount - 1) * spacing) / 2;
 
     for (let index = 0; index < visibleCount; index += 1) {
@@ -588,12 +783,11 @@
       const y = 88 + Math.abs(normalized) * 9;
       drawCard(ctx, x - cardWidth / 2, y - cardHeight / 2, null, cardWidth, cardHeight);
     }
-
-    if (handSize > 0) {
-      ctx.fillStyle = "rgba(226, 238, 221, .72)";
+    if (handSize > MAX_FACE_DOWN_CARDS) {
+      ctx.fillStyle = "#c9ef74";
       ctx.font = "9px Consolas, monospace";
       ctx.textAlign = "center";
-      ctx.fillText(handSize > MAX_FACE_DOWN_CARDS ? `${MAX_FACE_DOWN_CARDS} CARTAS VIRADAS · +${handSize - MAX_FACE_DOWN_CARDS}` : "CARTAS DA IA · VIRADAS PARA BAIXO", 550, 170);
+      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, 550, 170);
     }
   }
 
@@ -601,7 +795,7 @@
     const hand = state.players.player.hand;
     const visibleCount = state.phase === "dealing" ? state.dealt.player : hand.length;
     const layouts = [];
-    const spacing = visibleCount > 1 ? Math.min(90, 590 / (visibleCount - 1)) : 0;
+    const spacing = visibleCount > 1 ? Math.min(76, 500 / (visibleCount - 1)) : 0;
     const startX = 550 - ((visibleCount - 1) * spacing) / 2;
 
     for (let index = 0; index < visibleCount; index += 1) {
@@ -619,7 +813,8 @@
 
   function drawPlayerHand(ctx) {
     const canPlay = state.phase === "player-play";
-    for (const layout of getPlayerCardLayouts()) {
+    const layouts = getPlayerCardLayouts();
+    for (const layout of layouts) {
       const hovered = canPlay && layout.index === hoverCard;
       drawCard(
         ctx,
@@ -632,12 +827,59 @@
         hovered
       );
     }
+    if (canPlay && hoverCard >= 0 && layouts[hoverCard]) drawCardTooltip(ctx, layouts[hoverCard]);
     if (state.players.player.hand.length > 0) {
       ctx.fillStyle = "rgba(226, 238, 221, .76)";
       ctx.font = "9px Consolas, monospace";
       ctx.textAlign = "center";
-      ctx.fillText(canPlay ? "SUAS CARTAS · CLIQUE PARA JOGAR" : "SUA MÃO", 550, 644);
+      ctx.fillText(canPlay ? "SUA MÃO · CLIQUE PARA JOGAR" : "SUA MÃO", 550, 644);
     }
+  }
+
+  function drawCardTooltip(ctx, layout) {
+    const width = 224;
+    const height = 43;
+    const x = Math.max(width / 2 + 8, Math.min(canvas.width - width / 2 - 8, layout.x));
+    const y = 425;
+    ctx.save();
+    ctx.fillStyle = "rgba(10, 23, 21, .94)";
+    roundRect(ctx, x - width / 2, y, width, height, 7);
+    ctx.fill();
+    ctx.strokeStyle = `${CARDS[layout.type].color}99`;
+    ctx.lineWidth = 1;
+    roundRect(ctx, x - width / 2, y, width, height, 7);
+    ctx.stroke();
+    ctx.fillStyle = CARDS[layout.type].color;
+    ctx.textAlign = "center";
+    ctx.font = "bold 11px 'Segoe UI', sans-serif";
+    ctx.fillText(`${CARDS[layout.type].emoji} ${CARDS[layout.type].name}`, x, y + 16);
+    ctx.fillStyle = "#e6ede1";
+    ctx.font = "10px 'Segoe UI', sans-serif";
+    ctx.fillText(CARDS[layout.type].effect, x, y + 33, width - 18);
+    ctx.restore();
+  }
+
+  function drawGuessMarkers(ctx) {
+    const showSetupGuesses = ["setup-revealing", "setup-result", "dice-roll"].includes(state.phase);
+    if (showSetupGuesses) {
+      if (state.setupGuesses.ai) drawGuessMarker(ctx, "ai", state.setupGuesses.ai);
+      if (state.setupGuesses.player) drawGuessMarker(ctx, "player", state.setupGuesses.player);
+      return;
+    }
+    if (state.guesses.ai) drawGuessMarker(ctx, "ai", state.guesses.ai);
+    if (state.guesses.player) drawGuessMarker(ctx, "player", state.guesses.player);
+  }
+
+  function drawGuessMarker(ctx, playerKey, type) {
+    const x = 900;
+    const y = playerKey === "ai" ? 205 : 407;
+    ctx.save();
+    ctx.fillStyle = "rgba(226, 238, 221, .68)";
+    ctx.font = "8px Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("PALPITE", x + 29, y - 8);
+    drawCard(ctx, x, y, type, 58, 84);
+    ctx.restore();
   }
 
   function drawCenter(ctx, centerX, centerY) {
@@ -648,13 +890,32 @@
     ctx.ellipse(centerX, centerY + 45, 114, 28, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    const visibleCard = state.lastReveal && ["result", "game-over"].includes(state.phase)
-      ? state.lastReveal.actualType
-      : null;
+    const setupVisible = ["setup-result", "dice-roll"].includes(state.phase);
+    const normalVisible = state.lastReveal && ["result", "game-over"].includes(state.phase);
+    const visibleCard = setupVisible
+      ? state.setupCard
+      : normalVisible ? state.lastReveal.actualType : null;
     drawCard(ctx, centerX - 50, centerY - 72, visibleCard, 100, 144);
     ctx.fillStyle = "rgba(226, 238, 221, .72)";
     ctx.font = "10px Consolas, monospace";
-    ctx.fillText(visibleCard ? CARDS[visibleCard].name.toUpperCase() : "CARTA JOGADA", centerX, centerY + 91);
+    const openingGuess = ["setup-guess", "setup-revealing"].includes(state.phase);
+    const label = setupVisible
+      ? "CARTA DO SORTEIO"
+      : normalVisible ? CARDS[visibleCard].name.toUpperCase()
+        : openingGuess ? "CARTA DE ABERTURA" : "CARTA JOGADA";
+    ctx.fillText(label, centerX, centerY + 91);
+    ctx.restore();
+  }
+
+  function drawResultToast(ctx, summary) {
+    ctx.save();
+    ctx.fillStyle = "rgba(11, 24, 23, .86)";
+    roundRect(ctx, 355, 429, 390, 40, 8);
+    ctx.fill();
+    ctx.fillStyle = "#ecf2e6";
+    ctx.font = "12px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(summary, 550, 454, 365);
     ctx.restore();
   }
 
@@ -682,7 +943,7 @@
       ctx.fillStyle = CARDS[type].color;
       ctx.fillRect(-width * 0.34, height * 0.33, width * 0.68, 5);
       ctx.fillStyle = "#35443d";
-      ctx.font = `bold ${Math.max(9, Math.round(width * 0.105))}px 'Segoe UI', sans-serif`;
+      ctx.font = `bold ${Math.max(8, Math.round(width * 0.105))}px 'Segoe UI', sans-serif`;
       ctx.fillText(CARDS[type].name.toUpperCase(), 0, height * 0.28);
     } else {
       ctx.textAlign = "center";
@@ -709,38 +970,45 @@
     ctx.restore();
   }
 
-  function drawCoin(ctx, x, y) {
-    const squash = Math.max(0.12, Math.abs(Math.cos(state.coinFrame * Math.PI / 2)));
+  function drawDice(ctx) {
+    drawDie(ctx, 455, 326, state.dice.player);
+    drawDie(ctx, 645, 326, state.dice.ai);
+  }
+
+  function drawDie(ctx, x, y, value) {
+    const size = 72;
+    const offset = size * 0.25;
+    const points = {
+      1: [[0, 0]],
+      2: [[-offset, -offset], [offset, offset]],
+      3: [[-offset, -offset], [0, 0], [offset, offset]],
+      4: [[-offset, -offset], [offset, -offset], [-offset, offset], [offset, offset]],
+      5: [[-offset, -offset], [offset, -offset], [0, 0], [-offset, offset], [offset, offset]],
+      6: [[-offset, -offset], [offset, -offset], [-offset, 0], [offset, 0], [-offset, offset], [offset, offset]]
+    };
     ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(squash, 1);
-    ctx.shadowColor = "rgba(0, 0, 0, .4)";
-    ctx.shadowBlur = 18;
-    ctx.fillStyle = state.coinFrame % 2 === 0 ? "#d9c477" : "#c9ef74";
-    ctx.beginPath();
-    ctx.arc(0, 0, 43, 0, Math.PI * 2);
+    ctx.fillStyle = "#f5f0df";
+    ctx.shadowColor = "rgba(0, 0, 0, .35)";
+    ctx.shadowBlur = 14;
+    roundRect(ctx, x - size / 2, y - size / 2, size, size, 12);
     ctx.fill();
     ctx.shadowColor = "transparent";
-    ctx.strokeStyle = "#fff1bd";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, 0, 35, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = "#314331";
-    ctx.font = "bold 25px Georgia, serif";
-    ctx.textAlign = "center";
-    ctx.fillText(state.coinFrame % 2 === 0 ? "?" : "✦", 0, 9);
+    ctx.fillStyle = "#24312b";
+    for (const [px, py] of points[value]) {
+      ctx.beginPath();
+      ctx.arc(x + px, y + py, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
-  function handleCanvasPointer(event) {
+  function getCardAtPointer(event) {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     const x = (event.clientX - rect.left) * scaleX;
     const y = (event.clientY - rect.top) * scaleY;
     const layouts = getPlayerCardLayouts();
-    let hitIndex = -1;
 
     for (let index = layouts.length - 1; index >= 0; index -= 1) {
       const layout = layouts[index];
@@ -749,20 +1017,25 @@
       const localX = dx * Math.cos(layout.angle) + dy * Math.sin(layout.angle);
       const localY = -dx * Math.sin(layout.angle) + dy * Math.cos(layout.angle);
       if (Math.abs(localX) <= CARD_WIDTH / 2 && Math.abs(localY) <= CARD_HEIGHT / 2) {
-        hitIndex = layout.index;
-        break;
+        return layout.index;
       }
     }
+    return -1;
+  }
 
-    if (state.phase === "player-play" && hitIndex >= 0) {
-      playCard("player", state.players.player.hand[hitIndex]);
-      return;
-    }
-    if (hoverCard !== hitIndex) {
-      hoverCard = hitIndex;
-      canvas.style.cursor = state.phase === "player-play" && hitIndex >= 0 ? "pointer" : "default";
-      if (state.phase === "player-play") drawTable();
-    }
+  function handleCanvasPointerMove(event) {
+    const nextHover = state.phase === "player-play" ? getCardAtPointer(event) : -1;
+    if (hoverCard === nextHover) return;
+    hoverCard = nextHover;
+    canvas.style.cursor = nextHover >= 0 ? "pointer" : "default";
+    if (state.phase === "player-play") drawTable();
+  }
+
+  function handleCanvasClick(event) {
+    if (state.phase !== "player-play") return;
+    const cardIndex = getCardAtPointer(event);
+    if (cardIndex < 0) return;
+    playCard("player", state.players.player.hand[cardIndex]);
   }
 
   function roundRect(ctx, x, y, width, height, radius) {
@@ -770,13 +1043,13 @@
     ctx.roundRect(x, y, width, height, radius);
   }
 
-  canvas.addEventListener("pointermove", handleCanvasPointer);
+  canvas.addEventListener("pointermove", handleCanvasPointerMove);
   canvas.addEventListener("pointerleave", () => {
     hoverCard = -1;
     canvas.style.cursor = "default";
     if (state.phase === "player-play") drawTable();
   });
-  canvas.addEventListener("click", handleCanvasPointer);
+  canvas.addEventListener("click", handleCanvasClick);
   canvas.addEventListener("keydown", (event) => {
     if (!["player-play", "dealing"].includes(state.phase) || !/^[1-9]$/.test(event.key)) return;
     const cardIndex = Number(event.key) - 1;

@@ -31,7 +31,7 @@
       </div>
 
       <div class="table-wrap">
-        <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: use o mouse para jogar suas cartas"></canvas>
+        <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
       </div>
 
       <section class="play-panel" aria-live="polite">
@@ -56,7 +56,7 @@
 
     <footer class="page-footer">
       <span>Um jogo de estratégia, memória e um pouco de sorte.</span>
-      <span>v0.2 · Jogo local, sem internet</span>
+      <span>v0.4 · Jogo local, sem internet</span>
     </footer>
   </main>
 
@@ -69,17 +69,21 @@
       <button class="icon-button" id="close-rules" type="button" aria-label="Fechar regras">×</button>
     </div>
     <div class="rules-content">
-      <p>Você e a IA começam com <strong>5 vidas e 7 cartas aleatórias</strong>. Suas cartas ficam abertas na parte inferior da mesa: clique em uma para jogá-la virada para baixo. As cartas da IA ficam escondidas no topo. Um sorteio decide quem começa.</p>
+      <p>Você e a IA começam com <strong>5 vidas e 7 cartas aleatórias</strong>. Uma carta do baralho extra de 20 é virada no centro. Quem acertar o palpite começa; se nenhum ou ambos acertarem, os dados decidem. Empates nos dados são lançados novamente.</p>
       <ul>
         <li><span>🦁 Leão</span> — se o palpite estiver errado, quem adivinhou perde 2 vidas.</li>
         <li><span>🐇 Coelho</span> — se acertar, quem adivinhou ganha 1 ponto de sorte.</li>
-        <li><span>🐄 Vaca</span> — se errar, quem adivinhou recebe 2 cartas bônus.</li>
-        <li><span>🐟 Peixe</span> — não tem efeito especial.</li>
-        <li><span>🃏 Coringa</span> — troca o palpite por uma carta aleatória, tira 1 vida e dá 3 cartas bônus a quem adivinhou.</li>
+        <li><span>🐄 Vaca</span> — se errar, quem adivinhou compra 2 cartas extras.</li>
+        <li><span>🐟 Peixe</span> — acerto: +1 sorte; erro: perde sorte ou, se não houver, 1 vida.</li>
+        <li><span>🐅 Tigre</span> — se errar, quem adivinhou perde 1 vida.</li>
+        <li><span>🐒 Macaco</span> — se acertar, quem adivinhou compra 1 extra.</li>
+        <li><span>🐘 Elefante</span> — se errar, quem jogou recupera 1 vida (máximo 5).</li>
+        <li><span>🐢 Tartaruga</span> — se acertar, quem adivinhou ganha um escudo contra o próximo dano.</li>
+        <li><span>🃏 Coringa</span> — troca o palpite, causa 1 de dano e dá até 3 cartas extras.</li>
       </ul>
-      <p>Há 2% de chance de um único Coringa entrar na partida, substituindo uma carta inicial. Cartas bônus entram na mão de quem as recebe; a mão da IA permanece escondida. No máximo 20 cartas viradas para baixo são desenhadas na mesa. A sorte pode eliminar uma opção incorreta durante um palpite. Você tem 60 segundos por ação; ao acabar, o jogo escolhe por você.</p>
+      <p>O Coringa tem 2% de chance de entrar na mão inicial. Cartas extras compradas saem do baralho de 20 e entram na mão de quem as recebe; a mão da IA permanece escondida. No máximo 20 cartas viradas para baixo são desenhadas na mesa. A sorte elimina uma opção no palpite. Passe o mouse nas suas cartas para ver o efeito; clique para jogar. Você tem 60 segundos por ação.</p>
       <p>Cartas jogadas não voltam à mão. Vence quem ficar sem cartas ou reduzir a vida do adversário a zero.</p>
-      <p class="rules-note">A IA usa o histórico para orientar suas decisões, mas também varia as jogadas para evitar padrões previsíveis.</p>
+      <p class="rules-note">Escudos bloqueiam um evento de dano. A IA usa o histórico e varia as jogadas.</p>
     </div>
   </dialog>
 

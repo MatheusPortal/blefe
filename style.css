@@ -292,6 +292,8 @@ h1 span { color: #9eafb1; font-weight: 500; }
 
 dialog {
   width: min(540px, calc(100% - 30px));
+  max-height: 85vh;
+  overflow-y: auto;
   padding: 25px;
   border: 1px solid rgba(201, 239, 116, .25);
   border-radius: 13px;
