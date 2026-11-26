@@ -3,22 +3,47 @@
 
   const CARD_TYPES = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga", "coringa"];
   const COMMON_CARDS = CARD_TYPES.filter((type) => type !== "coringa");
+  const COMMON_CARD_COUNTS = {
+    leao: 5,
+    coelho: 4,
+    vaca: 4,
+    peixe: 4,
+    tigre: 4,
+    macaco: 4,
+    elefante: 4,
+    tartaruga: 4
+  };
+  const COMMON_DECK_SIZE = Object.values(COMMON_CARD_COUNTS).reduce((sum, count) => sum + count, 0);
+  const DECK_SIZE = COMMON_DECK_SIZE + 1;
+  const INITIAL_HAND_SIZE = 7;
+  const MAX_CARDS_PER_SPECIES = 3;
+  const MAX_LUCK = 5;
   const CARDS = {
-    leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro: perde 2 vidas." },
-    coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa", effect: "Acerto: ganha 1 sorte." },
-    vaca: { name: "Vaca", emoji: "🐄", color: "#f0d477", effect: "Erro: compra 2 extras." },
-    peixe: { name: "Peixe", emoji: "🐟", color: "#7ec9e8", effect: "Acerto: +1 sorte. Erro: perde sorte ou vida." },
-    tigre: { name: "Tigre", emoji: "🐅", color: "#ec8b51", effect: "Erro: perde 1 vida." },
-    macaco: { name: "Macaco", emoji: "🐒", color: "#c49668", effect: "Acerto: compra 1 extra." },
-    elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro: quem jogou recupera 1 vida." },
-    tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Acerto: ganha 1 escudo." },
-    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Troca o palpite: -1 vida e compra 3 extras." }
+    leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro: perde 2 vidas; quem jogou recebe benefício aleatório." },
+    coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa", effect: "Erro: perde 1 sorte ou 1 vida; quem jogou recebe benefício aleatório." },
+    vaca: { name: "Vaca", emoji: "🐄", color: "#f0d477", effect: "Erro: compra 2 cartas; quem jogou recebe benefício aleatório." },
+    peixe: { name: "Peixe", emoji: "🐟", color: "#7ec9e8", effect: "Erro: perde 2 sortes ou 1 vida; quem jogou recebe benefício aleatório." },
+    tigre: { name: "Tigre", emoji: "🐅", color: "#ec8b51", effect: "Erro: perde 1 vida; quem jogou recebe benefício aleatório." },
+    macaco: { name: "Macaco", emoji: "🐒", color: "#c49668", effect: "Erro: descarta 1 carta aleatória; quem jogou recebe benefício aleatório." },
+    elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro: perde 1 vida; quem jogou recebe benefício aleatório." },
+    tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Erro: perde 1 carta da próxima compra; quem jogou recebe benefício aleatório." },
+    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Erro: perde 1 vida, compra 2 cartas, revela uma carta escolhida e quem jogou recebe benefício aleatório." }
+  };
+  const CARD_BENEFITS = {
+    leao: ["heal1", "shield1", "luck1"],
+    coelho: ["luck2", "draw1", "shield1"],
+    vaca: ["heal1", "draw2", "shield1"],
+    peixe: ["luck2", "heal1", "draw1"],
+    tigre: ["luck1", "heal1", "damage1"],
+    macaco: ["draw2", "luck2", "spy2"],
+    elefante: ["heal2", "shield1", "luck2"],
+    tartaruga: ["shield2", "heal1", "luck1"],
+    coringa: ["healLuck", "draw3", "damageShield"]
   };
   const TURN_SECONDS = 60;
   const RESULT_PAUSE_MS = 2400;
   const CARD_WIDTH = 106;
   const CARD_HEIGHT = 146;
-  const EXTRA_DECK_SIZE = 20;
   const MAX_FACE_DOWN_CARDS = 20;
   const canvas = document.querySelector("#game-canvas");
   const context = canvas.getContext("2d");
@@ -108,9 +133,12 @@
     showGameView();
   }
 
-  function sendOnlineAction(action, type) {
+  function sendOnlineAction(action, type, index) {
     if (!onlineSession) return false;
-    return onlineSession.send({ kind: "game-action", action, type });
+    const message = { kind: "game-action", action };
+    if (type !== undefined) message.type = type;
+    if (index !== undefined) message.index = index;
+    return onlineSession.send(message);
   }
 
   function requestRematch() {
@@ -142,28 +170,36 @@
     return result;
   }
 
-  function createHand() {
-    return Array.from({ length: 7 }, () => (
-      COMMON_CARDS[Math.floor(Math.random() * COMMON_CARDS.length)]
+  function createCommonDeck() {
+    const deck = Object.entries(COMMON_CARD_COUNTS).flatMap(([type, count]) => (
+      Array(count).fill(type)
     ));
-  }
-
-  function createExtraDeck() {
-    const deck = COMMON_CARDS.flatMap((type) => [type, type]);
-    while (deck.length < EXTRA_DECK_SIZE) {
-      deck.push(COMMON_CARDS[Math.floor(Math.random() * COMMON_CARDS.length)]);
-    }
     return shuffle(deck);
   }
 
-  function makePlayer(name) {
+  function dealInitialHand(deck, discard) {
+    const hand = [];
+    const speciesCounts = Object.fromEntries(COMMON_CARDS.map((type) => [type, 0]));
+    while (hand.length < INITIAL_HAND_SIZE && deck.length > 0) {
+      const type = deck.pop();
+      if (speciesCounts[type] >= MAX_CARDS_PER_SPECIES) {
+        discard.push(type);
+        continue;
+      }
+      hand.push(type);
+      speciesCounts[type] += 1;
+    }
+    return hand;
+  }
+
+  function makePlayer(name, hand) {
     return {
       name,
       hp: 5,
       luck: 0,
       shields: 0,
-      hand: createHand(),
-      extraCardsHeld: Object.fromEntries(COMMON_CARDS.map((type) => [type, 0]))
+      extraDrawBlocks: 0,
+      hand
     };
   }
 
@@ -212,17 +248,26 @@
   function startGame() {
     clearGameTimers();
     hoverCard = -1;
+    const extraDeck = createCommonDeck();
+    const extraDiscard = [];
     state = {
       players: {
-        player: makePlayer(onlineNames ? onlineNames.local : "Você"),
-        ai: makePlayer(onlineNames ? onlineNames.remote : "IA")
+        player: makePlayer(
+          onlineNames ? onlineNames.local : "Você",
+          dealInitialHand(extraDeck, extraDiscard)
+        ),
+        ai: makePlayer(
+          onlineNames ? onlineNames.remote : "IA",
+          dealInitialHand(extraDeck, extraDiscard)
+        )
       },
-      extraDeck: createExtraDeck(),
-      extraDiscard: [],
+      extraDeck,
+      extraDiscard,
       phase: "dealing",
       round: 1,
       seconds: TURN_SECONDS,
       pending: null,
+      pendingJokerReveal: null,
       setupCard: null,
       setupGuesses: { player: null, ai: null },
       guesses: {},
@@ -236,7 +281,8 @@
       rematch: { player: false, ai: false },
       dealt: { player: 0, ai: 0 },
       startingPlayer: null,
-      aiInitiallyHadJoker: false,
+      aiHasJoker: false,
+      jokerDistributed: false,
       dice: { player: 1, ai: 1 },
       diceFrame: 0,
       attributeAnimations: [],
@@ -249,11 +295,15 @@
     }
 
     if (Math.random() < 0.02) {
-      const recipient = Math.random() < 0.5 ? state.players.player : state.players.ai;
+      const recipientKey = Math.random() < 0.5 ? "player" : "ai";
+      const recipient = state.players[recipientKey];
       const replacementIndex = Math.floor(Math.random() * recipient.hand.length);
+      state.extraDeck.push(recipient.hand[replacementIndex]);
+      state.extraDeck = shuffle(state.extraDeck);
       recipient.hand[replacementIndex] = "coringa";
+      state.jokerDistributed = true;
     }
-    state.aiInitiallyHadJoker = state.players.ai.hand.includes("coringa");
+    state.aiHasJoker = state.players.ai.hand.includes("coringa");
 
     render();
     animateDeal();
@@ -308,8 +358,8 @@
     window.clearInterval(clockInterval);
     state.seconds = TURN_SECONDS;
     clockInterval = window.setInterval(() => {
-      const timedPhases = ["player-play", "player-guess", "setup-guess"];
-      if (onlineRole) timedPhases.push("ai-play", "ai-guess");
+      const timedPhases = ["player-play", "player-guess", "setup-guess", "player-joker-select"];
+      if (onlineRole) timedPhases.push("ai-play", "ai-guess", "ai-joker-select");
       if (state.gameOver || !timedPhases.includes(state.phase)) return;
       state.seconds -= 1;
       if (state.seconds <= 0) {
@@ -339,6 +389,15 @@
       state.phase = "setup-revealing";
       render();
       aiTimeout = window.setTimeout(resolveSetupChallenge, 650);
+    } else if (state.phase === "player-joker-select" || state.phase === "ai-joker-select") {
+      const target = state.pendingJokerReveal && state.players[state.pendingJokerReveal.target];
+      if (!target || target.hand.length === 0) {
+        finishJokerReveal(null);
+        return;
+      }
+      const index = Math.floor(Math.random() * target.hand.length);
+      if (state.phase === "player-joker-select") submitJokerReveal(index);
+      else finishJokerReveal(index);
     } else if (state.phase === "player-play") {
       const hand = state.players.player.hand;
       const type = hand[Math.floor(Math.random() * hand.length)];
@@ -457,14 +516,179 @@
   function drawBonusCards(playerKey, count) {
     const player = state.players[playerKey];
     const drawn = [];
-    for (let index = 0; index < count; index += 1) {
+    const blocked = Math.min(count, player.extraDrawBlocks);
+    player.extraDrawBlocks -= blocked;
+    for (let index = blocked; index < count; index += 1) {
+      if (!state.jokerDistributed && Math.random() < 0.02) {
+        state.jokerDistributed = true;
+        if (playerKey === "ai") state.aiHasJoker = true;
+        player.hand.push("coringa");
+        drawn.push("coringa");
+        continue;
+      }
+      if (state.extraDeck.length === 0 && state.extraDiscard.length === 0) break;
       const type = drawExtraCard();
       if (!type) break;
+      if (type !== "coringa" && player.hand.filter((card) => card === type).length >= MAX_CARDS_PER_SPECIES) {
+        state.extraDiscard.push(type);
+        continue;
+      }
       player.hand.push(type);
-      player.extraCardsHeld[type] += 1;
       drawn.push(type);
+      if (playerKey === "ai" && type === "coringa") state.aiHasJoker = true;
     }
-    return drawn;
+    return { drawn, blocked };
+  }
+
+  function hasCardsToDraw() {
+    return !state.jokerDistributed || state.extraDeck.length > 0 || state.extraDiscard.length > 0;
+  }
+
+  function describeCardDraw(result) {
+    const parts = [];
+    if (result.drawn.length > 0) {
+      const count = result.drawn.length;
+      parts.push(`+${count} ${count === 1 ? "carta" : "cartas"}`);
+    }
+    if (result.blocked > 0) {
+      parts.push(`${result.blocked} ${result.blocked === 1 ? "bloqueada" : "bloqueadas"} pela Tartaruga`);
+    }
+    return parts.length > 0 ? parts.join(", ") : "nenhuma carta comprada";
+  }
+
+  function describeDamage(result) {
+    const parts = [];
+    if (result.blocked > 0) {
+      parts.push(`${result.blocked} ${result.blocked === 1 ? "dano bloqueado" : "danos bloqueados"} por escudo`);
+    }
+    if (result.lost > 0) {
+      parts.push(`−${result.lost} ${result.lost === 1 ? "vida" : "vidas"}`);
+    }
+    return parts.length > 0 ? parts.join(", ") : "sem dano";
+  }
+
+  function canApplyBenefit(benefit, owner, target) {
+    if (benefit.startsWith("heal") || benefit.startsWith("luck")) {
+      return benefit === "healLuck"
+        ? owner.hp < 5 && owner.luck < MAX_LUCK
+        : benefit.startsWith("heal") ? owner.hp < 5 : owner.luck < MAX_LUCK;
+    }
+    if (benefit.startsWith("draw")) {
+      const drawCount = Number(benefit.slice(4));
+      return hasCardsToDraw() && owner.extraDrawBlocks < drawCount;
+    }
+    if (benefit === "spy2") return target.hand.length > 0;
+    if (benefit === "damage1" || benefit === "damageShield") return target.hp > 0;
+    return benefit === "shield1" || benefit === "shield2";
+  }
+
+  function applyBenefit(benefit, ownerKey, targetKey) {
+    const owner = state.players[ownerKey];
+    const target = state.players[targetKey];
+    let spyCards = [];
+
+    switch (benefit) {
+      case "heal1":
+      case "heal2": {
+        const amount = Number(benefit.slice(4));
+        const healed = Math.min(amount, 5 - owner.hp);
+        owner.hp += healed;
+        return { summary: `+${healed} ${healed === 1 ? "vida" : "vidas"}`, spyCards };
+      }
+      case "shield1":
+      case "shield2": {
+        const amount = Number(benefit.slice(6));
+        owner.shields += amount;
+        return { summary: `+${amount} ${amount === 1 ? "escudo" : "escudos"}`, spyCards };
+      }
+      case "luck1":
+      case "luck2": {
+        const amount = Number(benefit.slice(4));
+        const gained = Math.min(amount, MAX_LUCK - owner.luck);
+        owner.luck += gained;
+        return { summary: `+${gained} ${gained === 1 ? "sorte" : "pontos de sorte"}`, spyCards };
+      }
+      case "draw1":
+      case "draw2":
+      case "draw3": {
+        const amount = Number(benefit.slice(4));
+        return {
+          summary: `compra ${amount}: ${describeCardDraw(drawBonusCards(ownerKey, amount))}`,
+          spyCards
+        };
+      }
+      case "damage1": {
+        return { summary: `dano adicional: ${describeDamage(applyDamage(target, 1))}`, spyCards };
+      }
+      case "spy2":
+        spyCards = shuffle(target.hand).slice(0, 2);
+        return { summary: `espiou ${spyCards.length} ${spyCards.length === 1 ? "carta" : "cartas"}`, spyCards };
+      case "healLuck": {
+        owner.hp += 1;
+        owner.luck += 1;
+        return { summary: "+1 vida e +1 sorte", spyCards };
+      }
+      case "damageShield": {
+        const damage = describeDamage(applyDamage(target, 1));
+        owner.shields += 1;
+        return { summary: `dano adicional (${damage}) e +1 escudo`, spyCards };
+      }
+      default:
+        return { summary: "sem benefício disponível", spyCards };
+    }
+  }
+
+  function applyPenalty(type, guesserKey) {
+    const guesser = state.players[guesserKey];
+    switch (type) {
+      case "leao":
+        return `perde ${describeDamage(applyDamage(guesser, 2))}`;
+      case "coelho":
+        if (guesser.luck > 0) {
+          guesser.luck -= 1;
+          return "−1 sorte";
+        }
+        return `perde ${describeDamage(applyDamage(guesser, 1))}`;
+      case "vaca":
+        return `compra 2: ${describeCardDraw(drawBonusCards(guesserKey, 2))}`;
+      case "peixe":
+        if (guesser.luck >= 2) {
+          guesser.luck -= 2;
+          return "−2 sorte";
+        }
+        return `perde ${describeDamage(applyDamage(guesser, 1))}`;
+      case "tigre":
+      case "elefante":
+        return `perde ${describeDamage(applyDamage(guesser, 1))}`;
+      case "macaco":
+        if (guesser.hand.length === 0) return "não havia carta para descartar";
+        {
+          const index = Math.floor(Math.random() * guesser.hand.length);
+          const [discarded] = guesser.hand.splice(index, 1);
+          state.extraDiscard.push(discarded);
+          if (guesserKey === "ai" && discarded === "coringa") state.aiHasJoker = false;
+        }
+        return "descarta 1 carta aleatória";
+      case "tartaruga":
+        guesser.extraDrawBlocks += 1;
+        return "perderá 1 carta na próxima compra extra";
+      case "coringa": {
+        const damage = describeDamage(applyDamage(guesser, 1));
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 2));
+        return `perde ${damage} e compra 2: ${draw}`;
+      }
+      default:
+        return "sem penalidade";
+    }
+  }
+
+  function applyRandomBenefit(type, ownerKey, targetKey) {
+    const owner = state.players[ownerKey];
+    const target = state.players[targetKey];
+    const options = CARD_BENEFITS[type].filter((benefit) => canApplyBenefit(benefit, owner, target));
+    if (options.length === 0) return { summary: "nenhum benefício disponível", spyCards: [] };
+    const selected = options[Math.floor(Math.random() * options.length)];
+    return applyBenefit(selected, ownerKey, targetKey);
   }
 
   function playCard(playerKey, type) {
@@ -483,10 +707,8 @@
 
     window.clearInterval(clockInterval);
     player.hand.splice(cardIndex, 1);
-    if (player.extraCardsHeld[type] > 0) {
-      player.extraCardsHeld[type] -= 1;
-      state.extraDiscard.push(type);
-    }
+    state.extraDiscard.push(type);
+    if (playerKey === "ai" && type === "coringa") state.aiHasJoker = false;
     if (playerKey === "player") state.playerPlayHistory[type] += 1;
     if (playerKey === "ai") state.aiPlayHistory[type] += 1;
     playCardSound(type);
@@ -521,7 +743,7 @@
     const weights = {};
     for (const type of CARD_TYPES) {
       if (type === "coringa") {
-        weights[type] = state.aiInitiallyHadJoker || state.playerPlayHistory.coringa > 0 ? 0 : 0.04;
+        weights[type] = state.aiHasJoker ? 0 : 0.04;
       } else {
         weights[type] = 1 + state.playerPlayHistory[type] * 1.3;
       }
@@ -554,17 +776,20 @@
 
     return sampleByScore(available, (guess) => {
       let value = 0;
+      const penalties = {
+        leao: 2.2,
+        coelho: state.players.ai.luck > 0 ? 0.7 : 1,
+        vaca: 0.3,
+        peixe: state.players.ai.luck >= 2 ? 1.2 : 1,
+        tigre: 1,
+        macaco: 0.8,
+        elefante: 1,
+        tartaruga: 0.4,
+        coringa: 1.5
+      };
       for (const actual of CARD_TYPES) {
         const chance = probabilities[actual] || 0;
-        if (actual === "leao" && guess !== actual) value -= chance * 2;
-        if (actual === "tigre" && guess !== actual) value -= chance;
-        if (actual === "coelho" && guess === actual) value += chance * 0.45;
-        if (actual === "vaca" && guess !== actual) value += chance * 0.7;
-        if (actual === "peixe") value += chance * (guess === actual ? 0.4 : -0.5);
-        if (actual === "macaco" && guess === actual) value += chance * 0.55;
-        if (actual === "elefante" && guess !== actual) value -= chance * 0.45;
-        if (actual === "tartaruga" && guess === actual) value += chance * 0.5;
-        if (actual === "coringa") value -= chance * 0.6;
+        if (guess !== actual) value -= chance * penalties[actual];
       }
       return value;
     }, 0.9);
@@ -599,13 +824,11 @@
   }
 
   function applyDamage(player, amount) {
-    if (player.shields > 0) {
-      player.shields -= 1;
-      return { blocked: true, lost: 0 };
-    }
-    const lost = Math.min(player.hp, amount);
+    const blocked = Math.min(player.shields, amount);
+    player.shields -= blocked;
+    const lost = Math.min(player.hp, amount - blocked);
     player.hp -= lost;
-    return { blocked: false, lost };
+    return { blocked, lost };
   }
 
   function getPlayerAttributes(player) {
@@ -677,64 +900,33 @@
       player: getPlayerAttributes(state.players.player),
       ai: getPlayerAttributes(state.players.ai)
     };
-    const selectedGuess = guess;
-    let correct = guess === actualType;
-    let summary;
+    const correct = guess === actualType;
+    let penalty = "";
+    let benefit = { summary: "", spyCards: [] };
 
     if (guesserKey === "player") state.playerGuessHistory[guess] += 1;
-
-    if (actualType === "coringa") {
-      const alternatives = COMMON_CARDS.filter((type) => type !== guess);
-      const swappedTo = alternatives[Math.floor(Math.random() * alternatives.length)] || COMMON_CARDS[0];
-      state.guesses[guesserKey] = swappedTo;
-      correct = false;
-      const damage = applyDamage(guesser, 1);
-      const bonus = drawBonusCards(guesserKey, 3);
-      summary = `🃏 Coringa · ${damage.blocked ? "escudo" : "−1 vida"} · +${bonus.length} extras`;
-    } else if (actualType === "leao" && !correct) {
-      const damage = applyDamage(guesser, 2);
-      summary = `🦁 Leão · ${damage.blocked ? "escudo" : "−2 vidas"}`;
-    } else if (actualType === "coelho" && correct) {
-      guesser.luck += 1;
-      summary = "🐇 Coelho · +1 sorte";
-    } else if (actualType === "vaca" && !correct) {
-      const bonus = drawBonusCards(guesserKey, 2);
-      summary = `🐄 Vaca · +${bonus.length} extras`;
-    } else if (actualType === "peixe") {
-      if (correct) {
-        guesser.luck += 1;
-        summary = "🐟 Peixe · +1 sorte";
-      } else if (guesser.luck > 0) {
-        guesser.luck -= 1;
-        summary = "🐟 Peixe · −1 sorte";
-      } else {
-        const damage = applyDamage(guesser, 1);
-        summary = `🐟 Peixe · ${damage.blocked ? "escudo" : "−1 vida"}`;
-      }
-    } else if (actualType === "tigre" && !correct) {
-      const damage = applyDamage(guesser, 1);
-      summary = `🐅 Tigre · ${damage.blocked ? "escudo" : "−1 vida"}`;
-    } else if (actualType === "macaco" && correct) {
-      const bonus = drawBonusCards(guesserKey, 1);
-      summary = `🐒 Macaco · +${bonus.length} extra`;
-    } else if (actualType === "elefante" && !correct) {
-      const healed = Math.min(1, 5 - playedBy.hp);
-      playedBy.hp += healed;
-      summary = `🐘 Elefante · ${healed ? "+1 vida" : "vida cheia"}`;
-    } else if (actualType === "tartaruga" && correct) {
-      guesser.shields += 1;
-      summary = "🐢 Tartaruga · +1 escudo";
+    if (correct) {
+      state.message = "Palpite certo · nada acontece.";
     } else {
-      summary = correct ? "Palpite certo" : "Palpite errado";
+      penalty = applyPenalty(actualType, guesserKey);
+      benefit = applyRandomBenefit(actualType, owner, guesserKey);
+      state.message = `${CARDS[actualType].emoji} ${CARDS[actualType].name} · ${penalty} · benefício: ${benefit.summary}.`;
     }
 
     state.attributeAnimations = createAttributeAnimations(previousAttributes);
     animateAttributeChanges();
     state.phase = "result";
-    state.lastReveal = { owner, actualType, guess: selectedGuess, correct, summary };
+    state.lastReveal = {
+      owner,
+      actualType,
+      guess,
+      correct,
+      summary: state.message,
+      spyCards: benefit.spyCards
+    };
     state.pending = null;
-    state.message = summary;
-    state.log = summary;
+    state.pendingJokerReveal = null;
+    state.log = state.message;
 
     if (guesser.hp <= 0) {
       guesser.hp = 0;
@@ -742,6 +934,67 @@
     } else if (playedBy.hand.length === 0) {
       endGame(owner, `${playedBy.name} venceu · sem cartas`);
     }
+
+    if (!state.gameOver && !correct && actualType === "coringa" && guesser.hand.length > 0) {
+      beginJokerReveal(owner, guesserKey);
+      return;
+    }
+
+    render();
+    if (!state.gameOver) {
+      aiTimeout = window.setTimeout(advanceAfterResult, RESULT_PAUSE_MS);
+    }
+  }
+
+  function beginJokerReveal(ownerKey, targetKey) {
+    state.pendingJokerReveal = { owner: ownerKey, target: targetKey };
+    if (ownerKey === "ai" && !isOnlineHost()) {
+      state.phase = "ai-joker-select";
+      state.message = "A IA escolheu uma carta do adversário para revelar.";
+      const target = state.players[targetKey];
+      finishJokerReveal(Math.floor(Math.random() * target.hand.length));
+      return;
+    }
+    state.phase = ownerKey === "player" ? "player-joker-select" : "ai-joker-select";
+    state.message = ownerKey === "player"
+      ? "Escolha uma carta da mão do adversário para revelar."
+      : `Aguardando ${state.players.ai.name} escolher uma carta para revelar.`;
+    beginTimedPhase();
+    render();
+  }
+
+  function submitJokerReveal(index) {
+    if (state.phase !== "player-joker-select" || !state.pendingJokerReveal) return;
+    const target = state.players[state.pendingJokerReveal.target];
+    if (!Number.isInteger(index) || index < 0 || index >= target.hand.length) return;
+    if (isOnlineGuest()) {
+      if (!sendOnlineAction("joker-reveal", undefined, index)) return;
+      window.clearInterval(clockInterval);
+      state.phase = "ai-joker-select";
+      state.message = "Escolha enviada. Revelando a carta...";
+      render();
+      return;
+    }
+    finishJokerReveal(index);
+  }
+
+  function finishJokerReveal(index) {
+    if (!state.pendingJokerReveal || !state.lastReveal) return;
+    window.clearInterval(clockInterval);
+    const target = state.players[state.pendingJokerReveal.target];
+    if (Number.isInteger(index) && index >= 0 && index < target.hand.length) {
+      const revealedCard = target.hand[index];
+      state.lastReveal.revealedCard = revealedCard;
+      state.lastReveal.summary += ` Carta revelada: ${CARDS[revealedCard].name}.`;
+      state.message = state.lastReveal.summary;
+      state.log = state.message;
+    } else {
+      state.lastReveal.summary += " Nenhuma carta pôde ser revelada.";
+      state.message = state.lastReveal.summary;
+      state.log = state.message;
+    }
+    state.pendingJokerReveal = null;
+    state.phase = "result";
     render();
     if (!state.gameOver) {
       aiTimeout = window.setTimeout(advanceAfterResult, RESULT_PAUSE_MS);
@@ -829,15 +1082,15 @@
     ]));
     const playerIsWeak = state.players.player.hp <= 2;
     const scores = {
-      leao: 2 * (1 - guessProbability.leao) + (playerIsWeak ? 0.7 : 0),
-      coelho: -0.45 * guessProbability.coelho,
-      vaca: -0.45 * (1 - guessProbability.vaca),
-      peixe: 0.8 - guessProbability.peixe,
-      tigre: 1 - guessProbability.tigre,
-      macaco: -0.55 * guessProbability.macaco,
-      elefante: 0.35 * (1 - guessProbability.elefante),
-      tartaruga: -0.5 * guessProbability.tartaruga,
-      coringa: 0.15
+      leao: 2.2 * (1 - guessProbability.leao) + (playerIsWeak ? 0.7 : 0),
+      coelho: 1 * (1 - guessProbability.coelho),
+      vaca: 0.3 * (1 - guessProbability.vaca),
+      peixe: 1.2 * (1 - guessProbability.peixe),
+      tigre: 1 * (1 - guessProbability.tigre),
+      macaco: 0.8 * (1 - guessProbability.macaco),
+      elefante: 1 * (1 - guessProbability.elefante),
+      tartaruga: 0.4 * (1 - guessProbability.tartaruga),
+      coringa: 1.5 * (1 - guessProbability.coringa)
     };
     const mixedScores = (type) => scores[type] - state.aiPlayHistory[type] * 0.4;
 
@@ -851,12 +1104,19 @@
     updateTimer();
     const showTableResult = state.phase === "game-over";
     const showTableNotice = ["result", "setup-result"].includes(state.phase)
+      || ["player-joker-select", "ai-joker-select"].includes(state.phase)
       || (state.phase === "dice-roll" && state.diceFrame >= 8)
       || (onlineRole && ["ai-play", "ai-guess", "setup-wait"].includes(state.phase));
     tableOverlay.hidden = !showTableResult;
     tableResult.textContent = showTableResult ? state.message : "";
     tableNotice.hidden = !showTableNotice;
-    tableNotice.textContent = showTableNotice ? state.message : "";
+    const spyCards = state.lastReveal
+      && state.lastReveal.owner === "player"
+      && state.lastReveal.spyCards;
+    const spyText = spyCards && spyCards.length > 0
+      ? ` · Espiou: ${spyCards.map((type) => `${CARDS[type].emoji} ${CARDS[type].name}`).join(", ")}`
+      : "";
+    tableNotice.textContent = showTableNotice ? `${state.message}${spyText}` : "";
     tableRestartButton.hidden = !showTableResult;
     tableRestartButton.disabled = Boolean(onlineRole && state.rematch.player);
     tableRestartButton.textContent = !onlineRole
@@ -867,6 +1127,7 @@
     tableFooter.hidden = state.phase === "game-over";
     restartButton.hidden = Boolean(onlineRole);
     actionArea.hidden = !(state.phase === "player-guess"
+      || state.phase === "player-joker-select"
       || (state.phase === "setup-guess" && (!isOnlineHost() || !state.setupGuesses.player)));
     renderActions();
     canvas.setAttribute("aria-label", getCanvasDescription());
@@ -883,18 +1144,17 @@
       player: remotePlayer,
       ai: {
         ...snapshot.players.player,
-        hand: Array(privateHostHandSize).fill(null),
-        extraCardsHeld: {}
+        hand: Array(privateHostHandSize).fill(null)
       }
     };
-    snapshot.players.ai.extraCardsHeld = {};
     snapshot.rematch = { player: state.rematch.ai, ai: state.rematch.player };
     snapshot.extraDeck = Array(snapshot.extraDeck.length).fill(null);
     snapshot.extraDiscard = [];
     snapshot.playerPlayHistory = {};
     snapshot.playerGuessHistory = {};
     snapshot.aiPlayHistory = {};
-    snapshot.aiInitiallyHadJoker = false;
+    snapshot.aiHasJoker = false;
+    snapshot.jokerDistributed = false;
     snapshot.attributeAnimations = [];
     snapshot.dealt = { player: state.dealt.ai, ai: state.dealt.player };
     snapshot.dice = { player: state.dice.ai, ai: state.dice.player };
@@ -914,7 +1174,13 @@
       }
     }
     if (snapshot.lastReveal) {
+      const owner = state.lastReveal.owner;
+      if (owner !== "ai") delete snapshot.lastReveal.spyCards;
       snapshot.lastReveal.owner = snapshot.lastReveal.owner === "player" ? "ai" : "player";
+    }
+    if (snapshot.pendingJokerReveal) {
+      snapshot.pendingJokerReveal.owner = snapshot.pendingJokerReveal.owner === "player" ? "ai" : "player";
+      snapshot.pendingJokerReveal.target = snapshot.pendingJokerReveal.target === "player" ? "ai" : "player";
     }
     if (snapshot.winner) {
       snapshot.winner = snapshot.winner === "player" ? "ai" : "player";
@@ -929,13 +1195,17 @@
       "player-play": "ai-play",
       "ai-play": "player-play",
       "player-guess": "ai-guess",
-      "ai-guess": "player-guess"
+      "ai-guess": "player-guess",
+      "player-joker-select": "ai-joker-select",
+      "ai-joker-select": "player-joker-select"
     };
     snapshot.phase = phaseMap[state.phase] || state.phase;
     if (snapshot.phase === "player-play") snapshot.message = "Sua vez.";
     else if (snapshot.phase === "player-guess") snapshot.message = "Sua vez de adivinhar.";
     else if (snapshot.phase === "ai-play") snapshot.message = `Aguardando a jogada de ${snapshot.players.ai.name}.`;
     else if (snapshot.phase === "ai-guess") snapshot.message = `Aguardando o palpite de ${snapshot.players.ai.name}.`;
+    else if (snapshot.phase === "player-joker-select") snapshot.message = "Escolha uma carta da mão do adversário para revelar.";
+    else if (snapshot.phase === "ai-joker-select") snapshot.message = `Aguardando ${snapshot.players.ai.name} escolher uma carta para revelar.`;
     return snapshot;
   }
 
@@ -973,6 +1243,16 @@
     }
     if (message.action === "use-luck" && state.phase === "ai-guess") {
       applyLuck("ai");
+      return;
+    }
+    if (
+      message.action === "joker-reveal"
+      && Number.isInteger(message.index)
+      && state.phase === "ai-joker-select"
+      && state.pendingJokerReveal
+      && state.pendingJokerReveal.owner === "ai"
+    ) {
+      finishJokerReveal(message.index);
     }
   }
 
@@ -996,6 +1276,7 @@
     const phases = [
       "setup-guess", "setup-revealing", "setup-result", "dice-roll",
       "player-play", "ai-play", "player-guess", "ai-guess",
+      "player-joker-select", "ai-joker-select",
       "revealing", "result", "game-over"
     ];
     const validCard = (type) => type === null || CARD_TYPES.includes(type);
@@ -1008,13 +1289,18 @@
       && player.hp <= 5
       && Number.isInteger(player.luck)
       && player.luck >= 0
-      && player.luck <= 40
+      && player.luck <= MAX_LUCK
       && Number.isInteger(player.shields)
       && player.shields >= 0
-      && player.shields <= 40
+      && player.shields <= 10000
+      && Number.isInteger(player.extraDrawBlocks)
+      && player.extraDrawBlocks >= 0
+      && player.extraDrawBlocks <= 10000
       && Array.isArray(player.hand)
       && player.hand.length <= 40
       && player.hand.every(validCard)
+      && COMMON_CARDS.every((type) => player.hand.filter((card) => card === type).length <= MAX_CARDS_PER_SPECIES)
+      && player.hand.filter((card) => card === "coringa").length <= 1
     );
     const validGuessSet = (guesses) => (
       guesses
@@ -1024,11 +1310,17 @@
     if (!snapshot || typeof snapshot !== "object" || !phases.includes(snapshot.phase)) return false;
     if (!snapshot.players || !validPlayer(snapshot.players.player) || !validPlayer(snapshot.players.ai)) return false;
     if (!snapshot.rematch || typeof snapshot.rematch.player !== "boolean" || typeof snapshot.rematch.ai !== "boolean") return false;
+    if (typeof snapshot.jokerDistributed !== "boolean") return false;
     if (!Number.isInteger(snapshot.round) || snapshot.round < 1 || snapshot.round > 1000) return false;
     if (!Number.isInteger(snapshot.seconds) || snapshot.seconds < 0 || snapshot.seconds > TURN_SECONDS) return false;
     if (typeof snapshot.message !== "string" || snapshot.message.length > 256) return false;
-    if (!Array.isArray(snapshot.extraDeck) || snapshot.extraDeck.length > EXTRA_DECK_SIZE) return false;
-    if (!Array.isArray(snapshot.extraDiscard) || snapshot.extraDiscard.length > EXTRA_DECK_SIZE) return false;
+    if (!Array.isArray(snapshot.extraDeck) || snapshot.extraDeck.length > DECK_SIZE) return false;
+    if (!Array.isArray(snapshot.extraDiscard) || snapshot.extraDiscard.length > DECK_SIZE) return false;
+    if (snapshot.pendingJokerReveal !== null && (
+      !snapshot.pendingJokerReveal
+      || !["player", "ai"].includes(snapshot.pendingJokerReveal.owner)
+      || !["player", "ai"].includes(snapshot.pendingJokerReveal.target)
+    )) return false;
     if (!validCard(snapshot.setupCard) || !validCard(snapshot.eliminated)) return false;
     if (!validGuessSet(snapshot.guesses) || !validGuessSet(snapshot.setupGuesses)) return false;
     if (snapshot.pending !== null && (
@@ -1039,6 +1331,12 @@
     if (snapshot.lastReveal && (
       !validCard(snapshot.lastReveal.actualType)
       || (snapshot.lastReveal.guess !== undefined && !validCard(snapshot.lastReveal.guess))
+      || (snapshot.lastReveal.revealedCard !== undefined && !validCard(snapshot.lastReveal.revealedCard))
+      || (snapshot.lastReveal.spyCards !== undefined && (
+        !Array.isArray(snapshot.lastReveal.spyCards)
+        || snapshot.lastReveal.spyCards.length > 2
+        || !snapshot.lastReveal.spyCards.every((type) => validCard(type) && type !== null)
+      ))
       || (snapshot.lastReveal.owner && !["player", "ai"].includes(snapshot.lastReveal.owner))
       || (snapshot.lastReveal.summary && snapshot.lastReveal.summary.length > 256)
     )) return false;
@@ -1056,7 +1354,26 @@
   function renderActions() {
     actionArea.replaceChildren();
 
-    if (state.phase === "setup-guess") {
+    if (state.phase === "player-joker-select" && state.pendingJokerReveal) {
+      const target = state.players[state.pendingJokerReveal.target];
+      const controls = document.createElement("div");
+      controls.className = "reveal-actions";
+      const prompt = document.createElement("p");
+      prompt.textContent = "Escolha a posição da carta, da esquerda para a direita:";
+      const options = document.createElement("div");
+      options.className = "reveal-options";
+      target.hand.forEach((_, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "reveal-choice";
+        button.textContent = String(index + 1);
+        button.setAttribute("aria-label", `Revelar carta ${index + 1} do adversário`);
+        button.addEventListener("click", () => submitJokerReveal(index));
+        options.append(button);
+      });
+      controls.append(prompt, options);
+      actionArea.append(controls);
+    } else if (state.phase === "setup-guess") {
       COMMON_CARDS.forEach((type, index) => {
         addGuessButton(type, () => submitSetupGuess(type), index, COMMON_CARDS.length);
       });
@@ -1104,8 +1421,8 @@
   function updateTimer() {
     timerValue.textContent = String(state.seconds);
     timer.classList.toggle("is-low", state.seconds <= 10);
-    const timedPhases = ["player-play", "player-guess", "setup-guess"];
-    if (onlineRole) timedPhases.push("ai-play", "ai-guess", "setup-wait");
+    const timedPhases = ["player-play", "player-guess", "setup-guess", "player-joker-select"];
+    if (onlineRole) timedPhases.push("ai-play", "ai-guess", "ai-joker-select", "setup-wait");
     timer.hidden = !timedPhases.includes(state.phase);
   }
 
@@ -1571,6 +1888,22 @@
       : normalVisible ? CARDS[visibleCard].name.toUpperCase()
         : openingGuess ? "CARTA DE ABERTURA" : "CARTA JOGADA";
     ctx.fillText(label, centerX, centerY + (mobile ? 113 : 91));
+    if (normalVisible && state.lastReveal.revealedCard) {
+      const revealWidth = mobile ? 72 : 60;
+      const revealHeight = mobile ? 104 : 86;
+      const revealX = centerX + (mobile ? 140 : 132);
+      drawCard(
+        ctx,
+        revealX - revealWidth / 2,
+        centerY - revealHeight / 2,
+        state.lastReveal.revealedCard,
+        revealWidth,
+        revealHeight
+      );
+      ctx.fillStyle = "rgba(226, 238, 221, .72)";
+      ctx.font = `${mobile ? 11 : 8}px Consolas, monospace`;
+      ctx.fillText("REVELADA", revealX, centerY + revealHeight / 2 + (mobile ? 16 : 12));
+    }
     ctx.restore();
   }
 

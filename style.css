@@ -393,6 +393,49 @@ body.online-mode #sound-toggle { display: none; }
   font-size: 10px;
 }
 
+.reveal-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+}
+
+.reveal-actions p {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(10px, 1vw, 13px);
+  text-align: center;
+}
+
+.reveal-options {
+  display: flex;
+  max-width: 100%;
+  max-height: 82px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  overflow-y: auto;
+}
+
+.reveal-choice {
+  min-width: 32px;
+  min-height: 30px;
+  border: 1px solid rgba(201, 239, 116, .4);
+  border-radius: 6px;
+  color: var(--text);
+  background: rgba(11, 24, 23, .9);
+  cursor: pointer;
+}
+
+.reveal-choice:hover, .reveal-choice:focus-visible {
+  border-color: var(--lime);
+  background: rgba(201, 239, 116, .18);
+}
+
 .hint-button:disabled { opacity: .4; cursor: not-allowed; }
 .hint-button:hover:not(:disabled) { background: rgba(120, 213, 170, .16); }
 
@@ -432,6 +475,63 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 .rules-content li span { display: inline-block; min-width: 92px; color: var(--text); font-weight: 700; }
 .rules-note { padding-top: 10px; border-top: 1px solid var(--line); color: var(--mint); }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.chat-messages {
+  min-height: 180px;
+  max-height: min(45vh, 360px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  margin: 18px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(5, 15, 16, .35);
+  list-style: none;
+}
+
+.chat-message {
+  max-width: 88%;
+  align-self: flex-start;
+  overflow-wrap: anywhere;
+}
+
+.chat-message-own { align-self: flex-end; text-align: right; }
+.chat-author { color: var(--mint); font-size: 11px; font-weight: 700; }
+.chat-message-own .chat-author { color: var(--lime); }
+.chat-message p { margin: 3px 0 0; color: var(--text); font-size: 13px; line-height: 1.4; }
+
+.chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.chat-form input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid rgba(224, 238, 233, .2);
+  border-radius: 6px;
+  outline: none;
+  color: var(--text);
+  background: rgba(5, 15, 16, .5);
+}
+
+.chat-form input:focus { border-color: var(--lime); }
+.chat-form button { padding: 0 16px; }
+.chat-form button:disabled { opacity: .5; cursor: not-allowed; }
+.chat-status { min-height: 18px; margin: 10px 0 0; color: var(--muted); font-size: 11px; }
+
 @media (max-width: 650px) {
   .app { width: calc(100% - 12px); }
   .topbar { min-height: 45px; }
@@ -449,6 +549,10 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .guess-card-name { font-size: clamp(7px, 2vw, 9px); }
   .guess-card::after { height: 2px; }
   .hint-button { min-height: 24px; padding: 0 8px; font-size: 9px; }
+  .reveal-actions { gap: 4px; padding: 3px; }
+  .reveal-actions p { font-size: 9px; }
+  .reveal-options { max-height: 72px; gap: 3px; }
+  .reveal-choice { min-width: 26px; min-height: 25px; padding: 2px 6px; font-size: 10px; }
   .primary-button, .hint-button { min-height: 33px; font-size: 9px; }
   .table-footer { min-height: 38px; gap: 6px; }
   .table-notice { padding: 6px 8px; }
@@ -457,6 +561,8 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   dialog { padding: 15px; }
   .rules-content { font-size: 11px; }
   .rules-content li span { min-width: 84px; }
+  .chat-messages { min-height: 150px; }
+  .chat-form button { padding: 0 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -17,6 +17,7 @@
       <div class="topbar-actions">
         <button class="text-button" id="sound-toggle" type="button" aria-pressed="true">♫ Som ligado</button>
         <button class="text-button" id="connection-log-button" type="button" hidden>Conexão: offline</button>
+        <button class="text-button" id="chat-open-button" type="button" hidden>Chat</button>
         <button class="text-button" id="leave-game-button" type="button" hidden>Menu</button>
         <button class="text-button" id="rules-button" type="button">Como jogar</button>
       </div>
@@ -29,7 +30,7 @@
         <p>Escolha como quer jogar.</p>
         <div class="menu-actions">
           <button class="primary-button menu-button" id="offline-button" type="button">Jogar offline <span>vs. IA</span></button>
-          <button class="secondary-button menu-button" id="online-button" type="button">Jogar online <span>1 contra 1</span></button>
+          <button class="secondary-button menu-button" id="online-button" type="button">Jogar online <span id="online-player-count" aria-live="polite">Carregando...</span></button>
           <button class="text-button menu-rules-button" id="menu-rules-button" type="button">Como jogar</button>
         </div>
       </div>
@@ -113,6 +114,23 @@
       <button class="icon-button" id="close-connection-log" type="button" aria-label="Fechar log">×</button>
     </div>
     <ol class="connection-log" id="connection-log" aria-live="polite"></ol>
+  </dialog>
+
+  <dialog id="chat-dialog" aria-labelledby="chat-title">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">CHAT P2P DA PARTIDA</p>
+        <h2 id="chat-title">Conversa</h2>
+      </div>
+      <button class="icon-button" id="close-chat" type="button" aria-label="Fechar chat">×</button>
+    </div>
+    <ol class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions"></ol>
+    <form class="chat-form" id="chat-form">
+      <label class="sr-only" for="chat-input">Mensagem</label>
+      <input id="chat-input" name="message" type="text" maxlength="500" autocomplete="off" placeholder="Escreva uma mensagem..." disabled>
+      <button class="primary-button" id="chat-send-button" type="submit" disabled>Enviar</button>
+    </form>
+    <p class="chat-status" id="chat-status" role="status" aria-live="polite">O chat estará disponível quando a conexão P2P estiver ativa.</p>
   </dialog>
 
   <script src="online.js"></script>

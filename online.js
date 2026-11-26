@@ -11,6 +11,15 @@
   const connectionLog = document.querySelector("#connection-log");
   const connectionStatusButton = document.querySelector("#connection-log-button");
   const leaveGameButton = document.querySelector("#leave-game-button");
+  const onlinePlayerCount = document.querySelector("#online-player-count");
+  const chatOpenButton = document.querySelector("#chat-open-button");
+  const chatDialog = document.querySelector("#chat-dialog");
+  const chatTitle = document.querySelector("#chat-title");
+  const chatMessages = document.querySelector("#chat-messages");
+  const chatForm = document.querySelector("#chat-form");
+  const chatInput = document.querySelector("#chat-input");
+  const chatSendButton = document.querySelector("#chat-send-button");
+  const chatStatus = document.querySelector("#chat-status");
 
   let signalingSocket = null;
   let peerConnection = null;
@@ -22,6 +31,53 @@
   let intentionallyLeaving = false;
   let roomId = "";
   let lastRemotePhase = "";
+
+  async function updateOnlinePlayerCount() {
+    try {
+      const response = await fetch("/health", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const status = await response.json();
+      if (!Number.isSafeInteger(status.playersOnline) || status.playersOnline < 0) {
+        throw new Error("Contagem de jogadores inválida");
+      }
+      onlinePlayerCount.textContent = `${status.playersOnline} jogando`;
+      onlinePlayerCount.title = `${status.playersOnline} jogador(es) em partidas online`;
+    } catch {
+      onlinePlayerCount.textContent = "indisponível";
+      onlinePlayerCount.title = "Não foi possível consultar os jogadores online.";
+    }
+  }
+
+  function setChatAvailability(available) {
+    chatOpenButton.hidden = !available;
+    chatInput.disabled = !available;
+    chatSendButton.disabled = !available;
+    if (!available && chatDialog.open) chatDialog.close();
+  }
+
+  function clearChat() {
+    chatMessages.replaceChildren();
+    chatTitle.textContent = "Conversa";
+    chatStatus.textContent = "O chat estará disponível quando a conexão P2P estiver ativa.";
+    setChatAvailability(false);
+  }
+
+  function appendChatMessage(nickname, text, ownMessage) {
+    const item = document.createElement("li");
+    item.className = ownMessage ? "chat-message chat-message-own" : "chat-message";
+    const author = document.createElement("span");
+    author.className = "chat-author";
+    author.textContent = `${nickname} · ${new Date().toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit"
+    })}`;
+    const content = document.createElement("p");
+    content.textContent = text;
+    item.append(author, content);
+    chatMessages.append(item);
+    while (chatMessages.children.length > 100) chatMessages.firstElementChild.remove();
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
 
   function logConnection(message) {
     const item = document.createElement("li");
@@ -98,6 +154,10 @@
       logConnection("Canal de dados P2P aberto; a partida não depende do servidor de sinalização.");
       setStatus("Conexão direta estabelecida. Iniciando partida...");
       setTopbarStatus("P2P conectado");
+      clearChat();
+      chatTitle.textContent = `Com ${opponentNickname}`;
+      chatStatus.textContent = `Conectado diretamente com ${opponentNickname}.`;
+      setChatAvailability(true);
       const session = makeGameSession();
       const names = { local: activeNickname, remote: opponentNickname };
       if (peerRole === "host") window.BlefeGame.startOnlineHost(session, names);
@@ -106,6 +166,8 @@
     };
     channel.onclose = () => {
       logConnection("Canal de dados P2P fechado.");
+      setChatAvailability(false);
+      chatStatus.textContent = "Chat indisponível: a conexão com o adversário foi encerrada.";
       setTopbarStatus("desconectado");
       setStatus("A conexão com o adversário foi encerrada.");
     };
@@ -126,7 +188,18 @@
         return;
       }
 
-      if (message.kind === "game-state" && peerRole === "guest") {
+      if (message.kind === "chat-message") {
+        if (
+          typeof message.text !== "string"
+          || message.text.length > 500
+          || !message.text.trim()
+          || /[\u0000-\u001f\u007f]/.test(message.text)
+        ) {
+          logConnection("Mensagem de chat inválida recebida; ignorada.");
+          return;
+        }
+        appendChatMessage(opponentNickname, message.text.trim(), false);
+      } else if (message.kind === "game-state" && peerRole === "guest") {
         if (message.snapshot && message.snapshot.phase !== lastRemotePhase) {
           lastRemotePhase = message.snapshot.phase;
           logConnection(`Estado da partida atualizado: ${lastRemotePhase}.`);
@@ -327,6 +400,8 @@
   }
 
   function closePeerConnection() {
+    setChatAvailability(false);
+    chatStatus.textContent = "Chat indisponível: a partida não está conectada.";
     if (dataChannel) {
       dataChannel.onopen = null;
       dataChannel.onclose = null;
@@ -359,6 +434,7 @@
     }
     signalingSocket = null;
     closePeerConnection();
+    clearChat();
     queueing = false;
     activeNickname = "";
     opponentNickname = "";
@@ -376,6 +452,7 @@
     }
     signalingSocket = null;
     closePeerConnection();
+    clearChat();
     setQueueControls(false);
     setStatus("Busca cancelada.");
     setTopbarStatus("offline");
@@ -398,12 +475,34 @@
     onlineDialog.close();
   });
   document.querySelector("#close-connection-log").addEventListener("click", () => connectionDialog.close());
+  document.querySelector("#close-chat").addEventListener("click", () => chatDialog.close());
+  chatOpenButton.addEventListener("click", () => {
+    chatDialog.showModal();
+    chatInput.focus();
+  });
+  chatForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = chatInput.value.trim().replace(/\s+/g, " ");
+    if (!text) return;
+    if (text.length > 500) {
+      chatStatus.textContent = "A mensagem não pode passar de 500 caracteres.";
+      return;
+    }
+    if (sendData({ kind: "chat-message", text })) {
+      appendChatMessage(activeNickname, text, true);
+      chatInput.value = "";
+      chatStatus.textContent = `Conectado diretamente com ${opponentNickname}.`;
+    } else {
+      chatStatus.textContent = "Não foi possível enviar. Verifique a conexão P2P.";
+    }
+  });
   connectionStatusButton.addEventListener("click", () => connectionDialog.showModal());
   leaveGameButton.addEventListener("click", () => {
     logConnection("Jogador saiu da partida.");
     leaveSession();
     onlineDialog.close();
     connectionDialog.close();
+    chatDialog.close();
     window.BlefeGame.leaveToMenu();
   });
   cancelMatchButton.addEventListener("click", cancelMatchSearch);
@@ -421,6 +520,9 @@
     logConnection(`Busca iniciada para ${activeNickname}.`);
     openSignalingSocket();
   });
+
+  updateOnlinePlayerCount();
+  window.setInterval(updateOnlinePlayerCount, 15_000);
 
   window.BlefeOnline = Object.freeze({
     leaveSession,

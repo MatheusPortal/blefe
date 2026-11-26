@@ -173,7 +173,12 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", "http://localhost");
   if (url.pathname === "/health") {
     response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-    response.end(JSON.stringify({ status: "ok", waiting: waitingPeers.length, rooms: rooms.size }));
+    response.end(JSON.stringify({
+      status: "ok",
+      waiting: waitingPeers.length,
+      rooms: rooms.size,
+      playersOnline: rooms.size * 2
+    }));
     return;
   }
 
