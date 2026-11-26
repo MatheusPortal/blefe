@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const CARD_TYPES = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga", "coringa"];
+  const CARD_TYPES = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga", "troca", "coringa"];
   const COMMON_CARDS = CARD_TYPES.filter((type) => type !== "coringa");
   const COMMON_CARD_COUNTS = {
     leao: 5,
@@ -11,7 +11,8 @@
     tigre: 4,
     macaco: 4,
     elefante: 4,
-    tartaruga: 4
+    tartaruga: 4,
+    troca: 1
   };
   const COMMON_DECK_SIZE = Object.values(COMMON_CARD_COUNTS).reduce((sum, count) => sum + count, 0);
   const DECK_SIZE = COMMON_DECK_SIZE + 1;
@@ -19,29 +20,20 @@
   const MAX_CARDS_PER_SPECIES = 3;
   const MAX_LUCK = 5;
   const CARDS = {
-    leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro: perde 2 vidas; quem jogou recebe benefício aleatório." },
-    coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa", effect: "Erro: perde 1 sorte ou 1 vida; quem jogou recebe benefício aleatório." },
-    vaca: { name: "Vaca", emoji: "🐄", color: "#f0d477", effect: "Erro: compra 2 cartas; quem jogou recebe benefício aleatório." },
-    peixe: { name: "Peixe", emoji: "🐟", color: "#7ec9e8", effect: "Erro: perde 2 sortes ou 1 vida; quem jogou recebe benefício aleatório." },
-    tigre: { name: "Tigre", emoji: "🐅", color: "#ec8b51", effect: "Erro: perde 1 vida; quem jogou recebe benefício aleatório." },
-    macaco: { name: "Macaco", emoji: "🐒", color: "#c49668", effect: "Erro: descarta 1 carta aleatória; quem jogou recebe benefício aleatório." },
-    elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro: perde 1 vida; quem jogou recebe benefício aleatório." },
-    tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Erro: perde 1 carta da próxima compra; quem jogou recebe benefício aleatório." },
-    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Erro: perde 1 vida, compra 2 cartas, revela uma carta escolhida e quem jogou recebe benefício aleatório." }
+    leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro: perde 2 vidas e compra 1 carta; quem jogou ganha 1 sorte." },
+    coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa", effect: "Erro: compra 3 cartas; quem jogou ganha 2 de sorte. Acerto: +1 sorte." },
+    vaca: { name: "Vaca", emoji: "🐄", color: "#f0d477", effect: "Erro: compra 2 cartas; quem jogou ganha 2 escudos. Acerto: +1 sorte." },
+    peixe: { name: "Peixe", emoji: "🐟", color: "#7ec9e8", effect: "Erro: compra 3 cartas; quem jogou ganha 2 de sorte. Acerto: +1 vida." },
+    tigre: { name: "Tigre", emoji: "🐅", color: "#ec8b51", effect: "Erro: perde 1 vida e compra 2 cartas. Acerto: +1 vida ou escudo." },
+    macaco: { name: "Macaco", emoji: "🐒", color: "#c49668", effect: "Erro: compra 4 cartas; quem jogou ganha 3 de sorte. Acerto: +1 sorte." },
+    elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro: perde 2 vidas e compra 2 cartas; quem jogou ganha 1 escudo." },
+    tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Erro: compra 1 carta e perde 1 escudo; quem jogou ganha 1 escudo." },
+    troca: { name: "Troca", emoji: "🔄", color: "#d9c477", effect: "Erro: quem jogou pode trocar as mãos durante as 2 rodadas seguintes." },
+    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Erro: quem jogou ganha 1 vida e revela até 2 cartas da mão adversária." }
   };
-  const CARD_BENEFITS = {
-    leao: ["heal1", "shield1", "luck1"],
-    coelho: ["luck2", "draw1", "shield1"],
-    vaca: ["heal1", "draw2", "shield1"],
-    peixe: ["luck2", "heal1", "draw1"],
-    tigre: ["luck1", "heal1", "damage1"],
-    macaco: ["draw2", "luck2", "spy2"],
-    elefante: ["heal2", "shield1", "luck2"],
-    tartaruga: ["shield2", "heal1", "luck1"],
-    coringa: ["healLuck", "draw3", "damageShield"]
-  };
-  const TURN_SECONDS = 60;
-  const RESULT_PAUSE_MS = 2400;
+  const TURN_SECONDS = 40;
+  const RESULT_PAUSE_SECONDS = 4;
+  const OPENING_RESULT_PAUSE_MS = 2400;
   const CARD_WIDTH = 106;
   const CARD_HEIGHT = 146;
   const MAX_FACE_DOWN_CARDS = 20;
@@ -52,9 +44,12 @@
   const tableRestartButton = document.querySelector("#play-again-button");
   const tableFooter = document.querySelector(".table-footer");
   const actionArea = document.querySelector("#action-area");
-  const tableNotice = document.querySelector("#table-notice");
   const timer = document.querySelector("#timer");
   const timerValue = document.querySelector("#timer-value");
+  const useLuckButton = document.querySelector("#use-luck-button");
+  const swapHandsButton = document.querySelector("#swap-hands-button");
+  const roundCountdown = document.querySelector("#round-countdown");
+  const roundCountdownValue = document.querySelector("#round-countdown-value");
   const rulesDialog = document.querySelector("#rules-dialog");
   const soundToggle = document.querySelector("#sound-toggle");
   const mainMenu = document.querySelector("#main-menu");
@@ -74,13 +69,19 @@
   let aiTimeout;
   let dealInterval;
   let diceInterval;
+  let roundPauseInterval;
   let attributeAnimationFrame;
+  let resultAnimationFrame;
   let audioContext;
   let soundEnabled = true;
   let hoverCard = -1;
+  let hoverOpponentCard = -1;
   let onlineRole = null;
   let onlineSession = null;
   let onlineNames = null;
+  let systemEventSequence = 0;
+  let lastSystemEventId = 0;
+  let swapRequestPending = false;
 
   const isOnlineHost = () => onlineRole === "host";
   const isOnlineGuest = () => onlineRole === "guest";
@@ -96,7 +97,9 @@
   function showMenuView() {
     clearGameTimers();
     if (attributeAnimationFrame) window.cancelAnimationFrame(attributeAnimationFrame);
+    if (resultAnimationFrame) window.cancelAnimationFrame(resultAnimationFrame);
     attributeAnimationFrame = null;
+    resultAnimationFrame = null;
     state = null;
     onlineRole = null;
     onlineSession = null;
@@ -129,6 +132,8 @@
     onlineRole = "guest";
     onlineSession = session;
     onlineNames = names;
+    lastSystemEventId = 0;
+    swapRequestPending = false;
     state = null;
     showGameView();
   }
@@ -207,7 +212,52 @@
     window.clearInterval(clockInterval);
     window.clearInterval(dealInterval);
     window.clearInterval(diceInterval);
+    window.clearInterval(roundPauseInterval);
     window.clearTimeout(aiTimeout);
+  }
+
+  function appendSystemEvent(event) {
+    if (!state) return;
+    state.systemEvents.push(event);
+    if (state.systemEvents.length > 40) state.systemEvents.shift();
+    if (onlineRole && window.BlefeOnline) window.BlefeOnline.logGameEvent(event);
+  }
+
+  function recordSystemEvent(text) {
+    if (!state || typeof text !== "string" || !text.trim()) return;
+    appendSystemEvent({
+      id: ++systemEventSequence,
+      round: state.round,
+      kind: "system",
+      text: text.trim().slice(0, 180)
+    });
+  }
+
+  function logLocalSystemMessage(text) {
+    if (onlineRole && window.BlefeOnline) window.BlefeOnline.logGameEvent(text);
+  }
+
+  function recordRoundResult(reveal) {
+    const playedBy = state.players[reveal.owner];
+    const guesser = state.players[reveal.guesser];
+    appendSystemEvent({
+      id: ++systemEventSequence,
+      round: state.round,
+      kind: "round-result",
+      cardType: reveal.actualType,
+      playedBy: playedBy.name,
+      guesser: guesser.name,
+      correct: reveal.correct,
+      attributes: reveal.attributes
+    });
+  }
+
+  function syncSystemEvents(events) {
+    for (const event of events) {
+      if (event.id <= lastSystemEventId) continue;
+      if (window.BlefeOnline) window.BlefeOnline.logGameEvent(event);
+      lastSystemEventId = event.id;
+    }
   }
 
   function prepareAudio() {
@@ -227,6 +277,7 @@
       macaco: 659,
       elefante: 349,
       tartaruga: 494,
+      troca: 466,
       coringa: 784
     };
     const now = audioContext.currentTime;
@@ -248,6 +299,12 @@
   function startGame() {
     clearGameTimers();
     hoverCard = -1;
+    hoverOpponentCard = -1;
+    swapRequestPending = false;
+    if (resultAnimationFrame) {
+      window.cancelAnimationFrame(resultAnimationFrame);
+      resultAnimationFrame = null;
+    }
     const extraDeck = createCommonDeck();
     const extraDiscard = [];
     state = {
@@ -272,6 +329,13 @@
       setupGuesses: { player: null, ai: null },
       guesses: {},
       lastReveal: null,
+      systemEvents: [],
+      swapAbility: null,
+      pauseSeconds: 0,
+      resultSequence: 0,
+      visualEffectSequence: 0,
+      visualEffect: null,
+      visualEffectStartedAt: null,
       playerPlayHistory: Object.fromEntries(CARD_TYPES.map((type) => [type, 0])),
       playerGuessHistory: Object.fromEntries(CARD_TYPES.map((type) => [type, 0])),
       aiPlayHistory: Object.fromEntries(CARD_TYPES.map((type) => [type, 0])),
@@ -305,6 +369,7 @@
     }
     state.aiHasJoker = state.players.ai.hand.includes("coringa");
 
+    recordSystemEvent("Partida iniciada. Boa sorte!");
     render();
     animateDeal();
   }
@@ -372,6 +437,28 @@
     }, 1000);
   }
 
+  function beginRoundPause(onComplete) {
+    window.clearInterval(roundPauseInterval);
+    state.pauseSeconds = RESULT_PAUSE_SECONDS;
+    const deadline = Date.now() + RESULT_PAUSE_SECONDS * 1000;
+    render();
+    roundPauseInterval = window.setInterval(() => {
+      if (!state || state.phase !== "result") {
+        window.clearInterval(roundPauseInterval);
+        return;
+      }
+      const secondsLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      if (state.pauseSeconds !== secondsLeft) {
+        state.pauseSeconds = secondsLeft;
+        render();
+      }
+      if (secondsLeft === 0) {
+        window.clearInterval(roundPauseInterval);
+        onComplete();
+      }
+    }, 100);
+  }
+
   function onTimeout() {
     if (isOnlineHost() && state.phase === "ai-play") {
       const hand = state.players.ai.hand;
@@ -392,19 +479,28 @@
     } else if (state.phase === "player-joker-select" || state.phase === "ai-joker-select") {
       const target = state.pendingJokerReveal && state.players[state.pendingJokerReveal.target];
       if (!target || target.hand.length === 0) {
-        finishJokerReveal(null);
+        finishJokerReveal([]);
         return;
       }
-      const index = Math.floor(Math.random() * target.hand.length);
-      if (state.phase === "player-joker-select") submitJokerReveal(index);
-      else finishJokerReveal(index);
+      const selected = state.pendingJokerReveal.selectedIndices;
+      const needed = Math.min(2, target.hand.length);
+      const remaining = shuffle(Array.from({ length: target.hand.length }, (_, index) => index)
+        .filter((index) => !selected.includes(index)))
+        .slice(0, needed - selected.length);
+      if (state.phase === "player-joker-select") {
+        remaining.forEach(submitJokerReveal);
+      } else {
+        finishJokerReveal([...selected, ...remaining]);
+      }
     } else if (state.phase === "player-play") {
       const hand = state.players.player.hand;
       const type = hand[Math.floor(Math.random() * hand.length)];
+      recordSystemEvent("Tempo esgotado: carta escolhida automaticamente.");
       state.log = "Tempo esgotado: carta escolhida automaticamente.";
       playCard("player", type);
     } else if (state.phase === "player-guess") {
       const choices = CARD_TYPES.filter((type) => type !== state.eliminated);
+      recordSystemEvent("Tempo esgotado: palpite escolhido automaticamente.");
       submitGuess("player", choices[Math.floor(Math.random() * choices.length)]);
     } else if (state.phase === "setup-guess") {
       const type = COMMON_CARDS[Math.floor(Math.random() * COMMON_CARDS.length)];
@@ -419,12 +515,14 @@
       sendOnlineAction("setup-guess", type);
       state.phase = "setup-wait";
       state.message = "Palpite enviado. Aguardando o outro jogador...";
+      logLocalSystemMessage(state.message);
       render();
       return;
     }
     state.setupGuesses.player = type;
     if (isOnlineHost() && !state.setupGuesses.ai) {
       state.message = `Aguardando o palpite de ${state.players.ai.name}...`;
+      recordSystemEvent(state.message);
       render();
       beginTimedPhase();
       return;
@@ -449,14 +547,16 @@
       state.phase = "setup-result";
       state.message = `${name} acertou e começa.`;
       state.log = `${CARDS[state.setupCard].emoji} ${name} abre a partida.`;
+      recordSystemEvent(`Palpite inicial: ${name} acertou ${CARDS[state.setupCard].emoji} ${CARDS[state.setupCard].name}.`);
       render();
-      aiTimeout = window.setTimeout(() => startTurn(starter), RESULT_PAUSE_MS);
+      aiTimeout = window.setTimeout(() => startTurn(starter), OPENING_RESULT_PAUSE_MS);
       return;
     }
 
     state.phase = "dice-roll";
     state.message = "Empate nos palpites. Dados!";
     state.log = "Desempate na mesa.";
+    recordSystemEvent("Empate nos palpites iniciais. Desempate nos dados.");
     render();
     rollDice();
   }
@@ -478,6 +578,7 @@
       if (state.dice.player === state.dice.ai) {
         state.message = "Dados empatados. Mais uma!";
         state.log = `${state.dice.player} × ${state.dice.ai} · novo lance`;
+        recordSystemEvent(`Dados empatados (${state.dice.player} × ${state.dice.ai}). Novo lance.`);
         render();
         aiTimeout = window.setTimeout(rollDice, 550);
         return;
@@ -487,8 +588,9 @@
       const name = state.players[starter].name;
       state.message = `${state.dice.player} × ${state.dice.ai} · ${name} começa.`;
       state.log = `${name} venceu no dado.`;
+      recordSystemEvent(`Desempate: ${name} venceu nos dados (${state.dice.player} × ${state.dice.ai}).`);
       render();
-      aiTimeout = window.setTimeout(() => startTurn(starter), RESULT_PAUSE_MS);
+      aiTimeout = window.setTimeout(() => startTurn(starter), OPENING_RESULT_PAUSE_MS);
     }, 100);
   }
 
@@ -499,12 +601,15 @@
     state.setupCard = null;
     state.guesses = {};
     state.lastReveal = null;
+    state.pauseSeconds = 0;
+    expireSwapAbility();
     state.message = playerKey === "player"
-      ? "Sua vez."
+      ? `Vez do jogador ${state.players.player.name}.`
       : isOnlineHost()
         ? `Aguardando a jogada de ${state.players.ai.name}.`
         : "A IA começa.";
     state.log = `${state.players[playerKey].name} começa.`;
+    recordSystemEvent(`Rodada ${state.round}: Vez do jogador ${state.players[playerKey].name}.`);
     if (playerKey === "player") {
       beginTimedPhase();
       render();
@@ -567,128 +672,179 @@
     return parts.length > 0 ? parts.join(", ") : "sem dano";
   }
 
-  function canApplyBenefit(benefit, owner, target) {
-    if (benefit.startsWith("heal") || benefit.startsWith("luck")) {
-      return benefit === "healLuck"
-        ? owner.hp < 5 && owner.luck < MAX_LUCK
-        : benefit.startsWith("heal") ? owner.hp < 5 : owner.luck < MAX_LUCK;
-    }
-    if (benefit.startsWith("draw")) {
-      const drawCount = Number(benefit.slice(4));
-      return hasCardsToDraw() && owner.extraDrawBlocks < drawCount;
-    }
-    if (benefit === "spy2") return target.hand.length > 0;
-    if (benefit === "damage1" || benefit === "damageShield") return target.hp > 0;
-    return benefit === "shield1" || benefit === "shield2";
+  function gainLuck(player, amount) {
+    const gained = Math.min(amount, MAX_LUCK - player.luck);
+    player.luck += gained;
+    return `+${gained} sorte`;
   }
 
-  function applyBenefit(benefit, ownerKey, targetKey) {
+  function gainShield(player, amount) {
+    player.shields += amount;
+    return `+${amount} ${amount === 1 ? "escudo" : "escudos"}`;
+  }
+
+  function recoverLifeOrShield(player) {
+    if (player.hp < 5) {
+      player.hp += 1;
+      return "+1 vida";
+    }
+    player.shields += 1;
+    return "+1 escudo (vida cheia)";
+  }
+
+  function resolveCardEffect(type, ownerKey, guesserKey, correct) {
     const owner = state.players[ownerKey];
-    const target = state.players[targetKey];
-    let spyCards = [];
-
-    switch (benefit) {
-      case "heal1":
-      case "heal2": {
-        const amount = Number(benefit.slice(4));
-        const healed = Math.min(amount, 5 - owner.hp);
-        owner.hp += healed;
-        return { summary: `+${healed} ${healed === 1 ? "vida" : "vidas"}`, spyCards };
-      }
-      case "shield1":
-      case "shield2": {
-        const amount = Number(benefit.slice(6));
-        owner.shields += amount;
-        return { summary: `+${amount} ${amount === 1 ? "escudo" : "escudos"}`, spyCards };
-      }
-      case "luck1":
-      case "luck2": {
-        const amount = Number(benefit.slice(4));
-        const gained = Math.min(amount, MAX_LUCK - owner.luck);
-        owner.luck += gained;
-        return { summary: `+${gained} ${gained === 1 ? "sorte" : "pontos de sorte"}`, spyCards };
-      }
-      case "draw1":
-      case "draw2":
-      case "draw3": {
-        const amount = Number(benefit.slice(4));
-        return {
-          summary: `compra ${amount}: ${describeCardDraw(drawBonusCards(ownerKey, amount))}`,
-          spyCards
-        };
-      }
-      case "damage1": {
-        return { summary: `dano adicional: ${describeDamage(applyDamage(target, 1))}`, spyCards };
-      }
-      case "spy2":
-        spyCards = shuffle(target.hand).slice(0, 2);
-        return { summary: `espiou ${spyCards.length} ${spyCards.length === 1 ? "carta" : "cartas"}`, spyCards };
-      case "healLuck": {
-        owner.hp += 1;
-        owner.luck += 1;
-        return { summary: "+1 vida e +1 sorte", spyCards };
-      }
-      case "damageShield": {
-        const damage = describeDamage(applyDamage(target, 1));
-        owner.shields += 1;
-        return { summary: `dano adicional (${damage}) e +1 escudo`, spyCards };
-      }
-      default:
-        return { summary: "sem benefício disponível", spyCards };
-    }
-  }
-
-  function applyPenalty(type, guesserKey) {
     const guesser = state.players[guesserKey];
+    if (correct) {
+      switch (type) {
+        case "tigre":
+        case "tartaruga":
+          return recoverLifeOrShield(guesser);
+        case "peixe":
+          if (guesser.hp >= 5) return "vida já está cheia";
+          guesser.hp += 1;
+          return "+1 vida";
+        case "macaco":
+        case "vaca":
+        case "coelho":
+          return gainLuck(guesser, 1);
+        case "elefante":
+          return gainShield(guesser, 1);
+        default:
+          return "sem efeito";
+      }
+    }
+
     switch (type) {
-      case "leao":
-        return `perde ${describeDamage(applyDamage(guesser, 2))}`;
-      case "coelho":
-        if (guesser.luck > 0) {
-          guesser.luck -= 1;
-          return "−1 sorte";
-        }
-        return `perde ${describeDamage(applyDamage(guesser, 1))}`;
-      case "vaca":
-        return `compra 2: ${describeCardDraw(drawBonusCards(guesserKey, 2))}`;
-      case "peixe":
-        if (guesser.luck >= 2) {
-          guesser.luck -= 2;
-          return "−2 sorte";
-        }
-        return `perde ${describeDamage(applyDamage(guesser, 1))}`;
-      case "tigre":
-      case "elefante":
-        return `perde ${describeDamage(applyDamage(guesser, 1))}`;
-      case "macaco":
-        if (guesser.hand.length === 0) return "não havia carta para descartar";
-        {
-          const index = Math.floor(Math.random() * guesser.hand.length);
-          const [discarded] = guesser.hand.splice(index, 1);
-          state.extraDiscard.push(discarded);
-          if (guesserKey === "ai" && discarded === "coringa") state.aiHasJoker = false;
-        }
-        return "descarta 1 carta aleatória";
-      case "tartaruga":
-        guesser.extraDrawBlocks += 1;
-        return "perderá 1 carta na próxima compra extra";
-      case "coringa": {
+      case "leao": {
+        const damage = describeDamage(applyDamage(guesser, 2));
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 1));
+        return `${damage}; compra ${draw}; ${owner.name} ${gainLuck(owner, 1)}`;
+      }
+      case "tigre": {
         const damage = describeDamage(applyDamage(guesser, 1));
         const draw = describeCardDraw(drawBonusCards(guesserKey, 2));
-        return `perde ${damage} e compra 2: ${draw}`;
+        return `${damage}; compra ${draw}`;
       }
+      case "peixe": {
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 3));
+        return `compra ${draw}; ${owner.name} ${gainLuck(owner, 2)}`;
+      }
+      case "macaco": {
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 4));
+        return `compra ${draw}; ${owner.name} ${gainLuck(owner, 3)}`;
+      }
+      case "elefante": {
+        const damage = describeDamage(applyDamage(guesser, 2));
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 2));
+        return `${damage}; compra ${draw}; ${owner.name} ${gainShield(owner, 1)}`;
+      }
+      case "vaca": {
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 2));
+        return `compra ${draw}; ${owner.name} ${gainShield(owner, 2)}`;
+      }
+      case "coelho": {
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 3));
+        return `compra ${draw}; ${owner.name} ${gainLuck(owner, 2)}`;
+      }
+      case "tartaruga": {
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 1));
+        const lostShield = guesser.shields > 0;
+        if (lostShield) guesser.shields -= 1;
+        return `compra ${draw}; ${lostShield ? "−1 escudo" : "sem escudo para perder"}; ${owner.name} ${gainShield(owner, 1)}`;
+      }
+      case "coringa": {
+        const healed = Math.min(1, 5 - owner.hp);
+        owner.hp += healed;
+        return `${owner.name} +${healed} vida; pode revelar até 2 cartas`;
+      }
+      case "troca":
+        state.swapAbility = { owner: ownerKey, expiresAfterRound: state.round + 2 };
+        return `${owner.name} pode trocar as mãos durante as 2 próximas rodadas`;
       default:
-        return "sem penalidade";
+        return "sem efeito";
     }
   }
 
-  function applyRandomBenefit(type, ownerKey, targetKey) {
+  function isSwapAvailable(ownerKey = "player") {
+    return Boolean(
+      state.swapAbility
+      && state.swapAbility.owner === ownerKey
+      && state.round <= state.swapAbility.expiresAfterRound
+      && !state.gameOver
+    );
+  }
+
+  function exchangeHands(ownerKey) {
+    if (!isSwapAvailable(ownerKey)) return false;
+    const targetKey = ownerKey === "player" ? "ai" : "player";
     const owner = state.players[ownerKey];
     const target = state.players[targetKey];
-    const options = CARD_BENEFITS[type].filter((benefit) => canApplyBenefit(benefit, owner, target));
-    if (options.length === 0) return { summary: "nenhum benefício disponível", spyCards: [] };
-    const selected = options[Math.floor(Math.random() * options.length)];
-    return applyBenefit(selected, ownerKey, targetKey);
+    [owner.hand, target.hand] = [target.hand, owner.hand];
+    state.aiHasJoker = state.players.ai.hand.includes("coringa");
+    state.swapAbility = null;
+    swapRequestPending = false;
+    state.message = "Troca de mãos!";
+    state.log = state.message;
+    recordSystemEvent(`${owner.name} trocou as mãos com ${target.name}.`);
+    state.attributeAnimations = [
+      { playerKey: "player", text: "mão trocada", color: "#d9c477", startedAt: performance.now() },
+      { playerKey: "ai", text: "mão trocada", color: "#d9c477", startedAt: performance.now() }
+    ];
+    triggerVisualEffect("swap");
+    animateAttributeChanges();
+    render();
+    return true;
+  }
+
+  function triggerVisualEffect(kind, details = {}) {
+    state.visualEffect = {
+      id: ++state.visualEffectSequence,
+      kind,
+      ...details
+    };
+    state.visualEffectStartedAt = performance.now();
+    animateVisualEffect();
+  }
+
+  function animateVisualEffect() {
+    if (!state || !state.visualEffect || state.visualEffectStartedAt === null) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (resultAnimationFrame) window.cancelAnimationFrame(resultAnimationFrame);
+    const effectId = state.visualEffect.id;
+    const drawFrame = () => {
+      if (!state || !state.visualEffect || state.visualEffect.id !== effectId) {
+        resultAnimationFrame = null;
+        return;
+      }
+      if (performance.now() - state.visualEffectStartedAt >= 1000) {
+        resultAnimationFrame = null;
+        drawTable();
+        return;
+      }
+      drawTable();
+      resultAnimationFrame = window.requestAnimationFrame(drawFrame);
+    };
+    resultAnimationFrame = window.requestAnimationFrame(drawFrame);
+  }
+
+  function useSwapHands() {
+    if (!isSwapAvailable("player") || swapRequestPending) return;
+    if (isOnlineGuest()) {
+      if (!sendOnlineAction("swap-hands")) return;
+      swapRequestPending = true;
+      render();
+      return;
+    }
+    exchangeHands("player");
+  }
+
+  function expireSwapAbility() {
+    if (state.swapAbility && state.round > state.swapAbility.expiresAfterRound) {
+      const owner = state.players[state.swapAbility.owner];
+      recordSystemEvent(`A oportunidade de Troca de ${owner.name} terminou.`);
+      state.swapAbility = null;
+    }
   }
 
   function playCard(playerKey, type) {
@@ -701,6 +857,7 @@
       sendOnlineAction("play", type);
       state.phase = "ai-play";
       state.message = "Jogada enviada. Aguardando a resposta...";
+      logLocalSystemMessage(state.message);
       render();
       return;
     }
@@ -712,7 +869,6 @@
     if (playerKey === "player") state.playerPlayHistory[type] += 1;
     if (playerKey === "ai") state.aiPlayHistory[type] += 1;
     playCardSound(type);
-
     state.pending = { owner: playerKey, type };
     state.lastReveal = null;
     state.guesses = {};
@@ -724,6 +880,7 @@
       state.message = isOnlineHost()
         ? `Aguardando o palpite de ${state.players.ai.name}.`
         : "A IA está escolhendo o palpite.";
+      if (isOnlineHost()) recordSystemEvent(state.message);
       render();
       if (isOnlineHost()) {
         beginTimedPhase();
@@ -810,6 +967,7 @@
       sendOnlineAction("guess", guess);
       state.phase = "ai-guess";
       state.message = "Palpite enviado. Aguardando o resultado...";
+      logLocalSystemMessage(state.message);
       render();
       return;
     }
@@ -821,6 +979,10 @@
     state.log = "Revelando a carta.";
     render();
     aiTimeout = window.setTimeout(() => resolveGuess(guesserKey, guess), 650);
+  }
+
+  function recordResolvedGuess(reveal) {
+    recordRoundResult(reveal);
   }
 
   function applyDamage(player, amount) {
@@ -858,6 +1020,8 @@
         const name = amount === 1 ? singular : plural;
         changes.push({
           playerKey,
+          attribute,
+          value: change,
           text: `${change > 0 ? "+" : "−"}${amount} ${name}`,
           color,
           startedAt: performance.now()
@@ -901,32 +1065,41 @@
       ai: getPlayerAttributes(state.players.ai)
     };
     const correct = guess === actualType;
-    let penalty = "";
-    let benefit = { summary: "", spyCards: [] };
-
     if (guesserKey === "player") state.playerGuessHistory[guess] += 1;
-    if (correct) {
-      state.message = "Palpite certo · nada acontece.";
-    } else {
-      penalty = applyPenalty(actualType, guesserKey);
-      benefit = applyRandomBenefit(actualType, owner, guesserKey);
-      state.message = `${CARDS[actualType].emoji} ${CARDS[actualType].name} · ${penalty} · benefício: ${benefit.summary}.`;
-    }
-
+    const effect = resolveCardEffect(actualType, owner, guesserKey, correct);
+    const effectSummary = correct && effect === "sem efeito" ? "nada acontece" : effect;
+    state.message = correct ? "Palpite certo!" : "Palpite errado!";
     state.attributeAnimations = createAttributeAnimations(previousAttributes);
+    const attributeChanges = state.attributeAnimations.map((animation) => ({
+      playerName: state.players[animation.playerKey].name,
+      attribute: animation.attribute,
+      value: animation.value
+    }));
     animateAttributeChanges();
     state.phase = "result";
     state.lastReveal = {
+      id: ++state.resultSequence,
       owner,
       actualType,
       guess,
+      guesser: guesserKey,
       correct,
+      effectSummary,
+      attributes: attributeChanges,
       summary: state.message,
-      spyCards: benefit.spyCards
+      revealedCards: []
     };
+    triggerVisualEffect("reveal", { cardType: actualType, correct });
     state.pending = null;
     state.pendingJokerReveal = null;
     state.log = state.message;
+
+    const needsJokerReveal = !correct
+      && actualType === "coringa"
+      && guesser.hand.length > 0
+      && guesser.hp > 0
+      && playedBy.hand.length > 0;
+    if (!needsJokerReveal) recordResolvedGuess(state.lastReveal);
 
     if (guesser.hp <= 0) {
       guesser.hp = 0;
@@ -935,30 +1108,33 @@
       endGame(owner, `${playedBy.name} venceu · sem cartas`);
     }
 
-    if (!state.gameOver && !correct && actualType === "coringa" && guesser.hand.length > 0) {
+    if (!state.gameOver && needsJokerReveal) {
       beginJokerReveal(owner, guesserKey);
       return;
     }
 
     render();
     if (!state.gameOver) {
-      aiTimeout = window.setTimeout(advanceAfterResult, RESULT_PAUSE_MS);
+      beginRoundPause(advanceAfterResult);
     }
   }
 
   function beginJokerReveal(ownerKey, targetKey) {
-    state.pendingJokerReveal = { owner: ownerKey, target: targetKey };
+    state.pendingJokerReveal = { owner: ownerKey, target: targetKey, selectedIndices: [] };
     if (ownerKey === "ai" && !isOnlineHost()) {
       state.phase = "ai-joker-select";
-      state.message = "A IA escolheu uma carta do adversário para revelar.";
+      state.message = "O Coringa revela duas cartas...";
       const target = state.players[targetKey];
-      finishJokerReveal(Math.floor(Math.random() * target.hand.length));
+      const indices = shuffle(Array.from({ length: target.hand.length }, (_, index) => index))
+        .slice(0, Math.min(2, target.hand.length));
+      finishJokerReveal(indices);
       return;
     }
     state.phase = ownerKey === "player" ? "player-joker-select" : "ai-joker-select";
     state.message = ownerKey === "player"
-      ? "Escolha uma carta da mão do adversário para revelar."
-      : `Aguardando ${state.players.ai.name} escolher uma carta para revelar.`;
+      ? "Clique em até duas cartas da mão adversária."
+      : `Aguardando ${state.players.ai.name} selecionar cartas.`;
+    recordSystemEvent(`${state.players[ownerKey].name}: clique em até duas cartas da mão adversária para revelar.`);
     beginTimedPhase();
     render();
   }
@@ -967,38 +1143,63 @@
     if (state.phase !== "player-joker-select" || !state.pendingJokerReveal) return;
     const target = state.players[state.pendingJokerReveal.target];
     if (!Number.isInteger(index) || index < 0 || index >= target.hand.length) return;
+    const selected = state.pendingJokerReveal.selectedIndices;
+    if (selected.includes(index) || selected.length >= Math.min(2, target.hand.length)) return;
     if (isOnlineGuest()) {
       if (!sendOnlineAction("joker-reveal", undefined, index)) return;
-      window.clearInterval(clockInterval);
-      state.phase = "ai-joker-select";
-      state.message = "Escolha enviada. Revelando a carta...";
-      render();
-      return;
     }
-    finishJokerReveal(index);
+    selected.push(index);
+    if (selected.length >= Math.min(2, target.hand.length)) {
+      if (!isOnlineGuest()) finishJokerReveal(selected);
+      else {
+        state.message = "Duas cartas selecionadas.";
+        render();
+      }
+    } else {
+      state.message = "Escolha mais uma carta.";
+      render();
+    }
   }
 
-  function finishJokerReveal(index) {
+  function receiveJokerRevealSelection(index) {
+    if (
+      state.phase !== "ai-joker-select"
+      || !state.pendingJokerReveal
+      || state.pendingJokerReveal.owner !== "ai"
+    ) return;
+    const target = state.players[state.pendingJokerReveal.target];
+    const selected = state.pendingJokerReveal.selectedIndices;
+    if (
+      !Number.isInteger(index)
+      || index < 0
+      || index >= target.hand.length
+      || selected.includes(index)
+      || selected.length >= Math.min(2, target.hand.length)
+    ) return;
+    selected.push(index);
+    if (selected.length >= Math.min(2, target.hand.length)) finishJokerReveal(selected);
+    else render();
+  }
+
+  function finishJokerReveal(indices) {
     if (!state.pendingJokerReveal || !state.lastReveal) return;
     window.clearInterval(clockInterval);
     const target = state.players[state.pendingJokerReveal.target];
-    if (Number.isInteger(index) && index >= 0 && index < target.hand.length) {
-      const revealedCard = target.hand[index];
-      state.lastReveal.revealedCard = revealedCard;
-      state.lastReveal.summary += ` Carta revelada: ${CARDS[revealedCard].name}.`;
-      state.message = state.lastReveal.summary;
-      state.log = state.message;
-    } else {
-      state.lastReveal.summary += " Nenhuma carta pôde ser revelada.";
-      state.message = state.lastReveal.summary;
-      state.log = state.message;
-    }
+    const revealedCards = Array.isArray(indices)
+      ? indices.filter((index) => Number.isInteger(index) && index >= 0 && index < target.hand.length)
+        .slice(0, 2)
+        .map((index) => target.hand[index])
+      : [];
+    state.lastReveal.revealedCards = revealedCards;
+    state.lastReveal.summary = `Coringa revelou ${revealedCards.length} ${revealedCards.length === 1 ? "carta" : "cartas"}.`;
+    state.message = state.lastReveal.summary;
+    state.log = state.message;
+    recordResolvedGuess(state.lastReveal);
+    recordSystemEvent(`Coringa revelou ${revealedCards.length} cartas da mão adversária.`);
     state.pendingJokerReveal = null;
     state.phase = "result";
     render();
-    if (!state.gameOver) {
-      aiTimeout = window.setTimeout(advanceAfterResult, RESULT_PAUSE_MS);
-    }
+    if (!state.gameOver) beginRoundPause(advanceAfterResult);
   }
 
   function endGame(winnerKey, reason) {
@@ -1007,6 +1208,7 @@
     state.winner = winnerKey;
     state.message = winnerKey === "player" ? `Vitória · ${reason}` : `Derrota · ${reason}`;
     state.log = reason;
+    recordSystemEvent(state.message);
   }
 
   function useLuck() {
@@ -1015,6 +1217,7 @@
       sendOnlineAction("use-luck");
       state.phase = "ai-guess";
       state.message = "Usando sorte...";
+      logLocalSystemMessage(state.message);
       render();
       return;
     }
@@ -1031,6 +1234,7 @@
     guesser.luck -= 1;
     state.log = `Sorte: não é ${CARDS[state.eliminated].name}.`;
     state.message = state.log;
+    recordSystemEvent(`${guesser.name} usou sorte para eliminar uma opção.`);
     render();
   }
 
@@ -1041,15 +1245,28 @@
       return;
     }
     state.round += 1;
+    expireSwapAbility();
+    state.guesses = {};
+    state.lastReveal = null;
+    state.pauseSeconds = 0;
     state.phase = "player-play";
-    state.message = "Sua vez.";
+    state.message = `Vez do jogador ${state.players.player.name}.`;
     state.log = `Rodada ${state.round}`;
+    recordSystemEvent(`Rodada ${state.round}: Vez do jogador ${state.players.player.name}.`);
     beginTimedPhase();
     render();
   }
 
   function startAiTurn() {
     if (state.gameOver) return;
+    if (
+      !onlineRole
+      && isSwapAvailable("ai")
+      && state.players.ai.hand.length < state.players.player.hand.length
+    ) exchangeHands("ai");
+    state.guesses = {};
+    state.lastReveal = null;
+    state.pauseSeconds = 0;
     if (state.players.ai.hand.length === 0) {
       endGame("ai", `${state.players.ai.name} sem cartas`);
       render();
@@ -1058,6 +1275,7 @@
     if (isOnlineHost()) {
       state.phase = "ai-play";
       state.message = `Aguardando a jogada de ${state.players.ai.name}.`;
+      recordSystemEvent(state.message);
       beginTimedPhase();
       render();
       return;
@@ -1090,6 +1308,7 @@
       macaco: 0.8 * (1 - guessProbability.macaco),
       elefante: 1 * (1 - guessProbability.elefante),
       tartaruga: 0.4 * (1 - guessProbability.tartaruga),
+      troca: 0.6 * (1 - guessProbability.troca),
       coringa: 1.5 * (1 - guessProbability.coringa)
     };
     const mixedScores = (type) => scores[type] - state.aiPlayHistory[type] * 0.4;
@@ -1102,21 +1321,12 @@
     if (!state) return;
     drawTable();
     updateTimer();
+    roundCountdown.hidden = state.phase !== "result" || state.pauseSeconds <= 0;
+    roundCountdownValue.textContent = String(state.pauseSeconds || RESULT_PAUSE_SECONDS);
+    updateTurnTools();
     const showTableResult = state.phase === "game-over";
-    const showTableNotice = ["result", "setup-result"].includes(state.phase)
-      || ["player-joker-select", "ai-joker-select"].includes(state.phase)
-      || (state.phase === "dice-roll" && state.diceFrame >= 8)
-      || (onlineRole && ["ai-play", "ai-guess", "setup-wait"].includes(state.phase));
     tableOverlay.hidden = !showTableResult;
     tableResult.textContent = showTableResult ? state.message : "";
-    tableNotice.hidden = !showTableNotice;
-    const spyCards = state.lastReveal
-      && state.lastReveal.owner === "player"
-      && state.lastReveal.spyCards;
-    const spyText = spyCards && spyCards.length > 0
-      ? ` · Espiou: ${spyCards.map((type) => `${CARDS[type].emoji} ${CARDS[type].name}`).join(", ")}`
-      : "";
-    tableNotice.textContent = showTableNotice ? `${state.message}${spyText}` : "";
     tableRestartButton.hidden = !showTableResult;
     tableRestartButton.disabled = Boolean(onlineRole && state.rematch.player);
     tableRestartButton.textContent = !onlineRole
@@ -1127,13 +1337,23 @@
     tableFooter.hidden = state.phase === "game-over";
     restartButton.hidden = Boolean(onlineRole);
     actionArea.hidden = !(state.phase === "player-guess"
-      || state.phase === "player-joker-select"
       || (state.phase === "setup-guess" && (!isOnlineHost() || !state.setupGuesses.player)));
     renderActions();
     canvas.setAttribute("aria-label", getCanvasDescription());
     if (isOnlineHost() && onlineSession && state.phase !== "dealing") {
       onlineSession.send({ kind: "game-state", snapshot: createOnlineSnapshot() });
     }
+  }
+
+  function updateTurnTools() {
+    useLuckButton.hidden = state.phase !== "player-guess";
+    useLuckButton.disabled = state.players.player.luck < 1 || state.hintUsed;
+    useLuckButton.textContent = `✦ Usar sorte (${state.players.player.luck})`;
+    useLuckButton.setAttribute("aria-label", `Usar sorte: ${state.players.player.luck}`);
+    swapHandsButton.hidden = !isSwapAvailable("player");
+    swapHandsButton.disabled = swapRequestPending;
+    swapHandsButton.textContent = swapRequestPending ? "Aguardando troca..." : "🔄 Trocar mãos";
+    swapHandsButton.setAttribute("aria-label", "Trocar todas as cartas da mão com o adversário");
   }
 
   function createOnlineSnapshot() {
@@ -1148,6 +1368,9 @@
       }
     };
     snapshot.rematch = { player: state.rematch.ai, ai: state.rematch.player };
+    if (snapshot.swapAbility) {
+      snapshot.swapAbility.owner = snapshot.swapAbility.owner === "player" ? "ai" : "player";
+    }
     snapshot.extraDeck = Array(snapshot.extraDeck.length).fill(null);
     snapshot.extraDiscard = [];
     snapshot.playerPlayHistory = {};
@@ -1156,6 +1379,7 @@
     snapshot.aiHasJoker = false;
     snapshot.jokerDistributed = false;
     snapshot.attributeAnimations = [];
+    snapshot.visualEffectStartedAt = null;
     snapshot.dealt = { player: state.dealt.ai, ai: state.dealt.player };
     snapshot.dice = { player: state.dice.ai, ai: state.dice.player };
     snapshot.setupGuesses = { player: state.setupGuesses.ai, ai: state.setupGuesses.player };
@@ -1175,8 +1399,9 @@
     }
     if (snapshot.lastReveal) {
       const owner = state.lastReveal.owner;
-      if (owner !== "ai") delete snapshot.lastReveal.spyCards;
+      if (owner !== "ai") delete snapshot.lastReveal.revealedCards;
       snapshot.lastReveal.owner = snapshot.lastReveal.owner === "player" ? "ai" : "player";
+      snapshot.lastReveal.guesser = snapshot.lastReveal.guesser === "player" ? "ai" : "player";
     }
     if (snapshot.pendingJokerReveal) {
       snapshot.pendingJokerReveal.owner = snapshot.pendingJokerReveal.owner === "player" ? "ai" : "player";
@@ -1200,12 +1425,12 @@
       "ai-joker-select": "player-joker-select"
     };
     snapshot.phase = phaseMap[state.phase] || state.phase;
-    if (snapshot.phase === "player-play") snapshot.message = "Sua vez.";
+    if (snapshot.phase === "player-play") snapshot.message = `Vez do jogador ${snapshot.players.player.name}.`;
     else if (snapshot.phase === "player-guess") snapshot.message = "Sua vez de adivinhar.";
     else if (snapshot.phase === "ai-play") snapshot.message = `Aguardando a jogada de ${snapshot.players.ai.name}.`;
     else if (snapshot.phase === "ai-guess") snapshot.message = `Aguardando o palpite de ${snapshot.players.ai.name}.`;
-    else if (snapshot.phase === "player-joker-select") snapshot.message = "Escolha uma carta da mão do adversário para revelar.";
-    else if (snapshot.phase === "ai-joker-select") snapshot.message = `Aguardando ${snapshot.players.ai.name} escolher uma carta para revelar.`;
+    else if (snapshot.phase === "player-joker-select") snapshot.message = "Clique em até duas cartas da mão do adversário.";
+    else if (snapshot.phase === "ai-joker-select") snapshot.message = `Aguardando ${snapshot.players.ai.name} selecionar cartas.`;
     return snapshot;
   }
 
@@ -1219,6 +1444,10 @@
     }
     if (state.gameOver) return;
     const type = message.type;
+    if (message.action === "swap-hands" && isSwapAvailable("ai")) {
+      exchangeHands("ai");
+      return;
+    }
     if (message.action === "setup-guess" && COMMON_CARDS.includes(type) && state.phase === "setup-guess") {
       if (state.setupGuesses.ai) return;
       state.setupGuesses.ai = type;
@@ -1252,18 +1481,28 @@
       && state.pendingJokerReveal
       && state.pendingJokerReveal.owner === "ai"
     ) {
-      finishJokerReveal(message.index);
+      receiveJokerRevealSelection(message.index);
     }
   }
 
   function applyOnlineSnapshot(snapshot) {
     if (!isOnlineGuest() || !isValidOnlineSnapshot(snapshot)) return false;
     const previousRound = state && state.phase !== "game-over" ? state.round : null;
+    const previousVisualId = state && state.visualEffect ? state.visualEffect.id : null;
+    const previousVisualStartedAt = state ? state.visualEffectStartedAt : null;
     const previousAttributes = state ? {
       player: getPlayerAttributes(state.players.player),
       ai: getPlayerAttributes(state.players.ai)
     } : null;
     state = snapshot;
+    if (state.visualEffect && state.visualEffect.id !== previousVisualId) {
+      state.visualEffectStartedAt = performance.now();
+      animateVisualEffect();
+    } else {
+      state.visualEffectStartedAt = previousVisualStartedAt;
+    }
+    if (!state.swapAbility || state.swapAbility.owner !== "player") swapRequestPending = false;
+    syncSystemEvents(state.systemEvents);
     state.attributeAnimations = previousAttributes && previousRound === snapshot.round
       ? createAttributeAnimations(previousAttributes)
       : [];
@@ -1307,6 +1546,19 @@
       && validCard(guesses.player === undefined ? null : guesses.player)
       && validCard(guesses.ai === undefined ? null : guesses.ai)
     );
+    const validAttributes = (attributes) => (
+      Array.isArray(attributes)
+      && attributes.length <= 8
+      && attributes.every((change) => (
+        change
+        && typeof change.playerName === "string"
+        && change.playerName.length <= 18
+        && ["hp", "luck", "shields", "cards"].includes(change.attribute)
+        && Number.isInteger(change.value)
+        && change.value !== 0
+        && Math.abs(change.value) <= 10000
+      ))
+    );
     if (!snapshot || typeof snapshot !== "object" || !phases.includes(snapshot.phase)) return false;
     if (!snapshot.players || !validPlayer(snapshot.players.player) || !validPlayer(snapshot.players.ai)) return false;
     if (!snapshot.rematch || typeof snapshot.rematch.player !== "boolean" || typeof snapshot.rematch.ai !== "boolean") return false;
@@ -1320,7 +1572,55 @@
       !snapshot.pendingJokerReveal
       || !["player", "ai"].includes(snapshot.pendingJokerReveal.owner)
       || !["player", "ai"].includes(snapshot.pendingJokerReveal.target)
+      || !Array.isArray(snapshot.pendingJokerReveal.selectedIndices)
+      || snapshot.pendingJokerReveal.selectedIndices.length > 2
+      || new Set(snapshot.pendingJokerReveal.selectedIndices).size !== snapshot.pendingJokerReveal.selectedIndices.length
+      || !snapshot.pendingJokerReveal.selectedIndices.every((index) => (
+        Number.isInteger(index)
+        && index >= 0
+        && index < snapshot.players[snapshot.pendingJokerReveal.target].hand.length
+      ))
     )) return false;
+    if (!Number.isInteger(snapshot.pauseSeconds) || snapshot.pauseSeconds < 0 || snapshot.pauseSeconds > RESULT_PAUSE_SECONDS) return false;
+    if (!Number.isInteger(snapshot.resultSequence) || snapshot.resultSequence < 0) return false;
+    if (!Number.isInteger(snapshot.visualEffectSequence) || snapshot.visualEffectSequence < 0) return false;
+    if (snapshot.visualEffect !== null && (
+      !snapshot.visualEffect
+      || !Number.isInteger(snapshot.visualEffect.id)
+      || snapshot.visualEffect.id < 1
+      || !["swap", "reveal"].includes(snapshot.visualEffect.kind)
+      || (snapshot.visualEffect.cardType !== undefined && !CARD_TYPES.includes(snapshot.visualEffect.cardType))
+      || (snapshot.visualEffect.correct !== undefined && typeof snapshot.visualEffect.correct !== "boolean")
+    )) return false;
+    if (snapshot.swapAbility !== null && (
+      !snapshot.swapAbility
+      || !["player", "ai"].includes(snapshot.swapAbility.owner)
+      || !Number.isInteger(snapshot.swapAbility.expiresAfterRound)
+      || snapshot.swapAbility.expiresAfterRound < snapshot.round
+      || snapshot.swapAbility.expiresAfterRound > snapshot.round + 2
+    )) return false;
+    if (!Array.isArray(snapshot.systemEvents) || snapshot.systemEvents.length > 40 || !snapshot.systemEvents.every((event) => (
+      event
+      && Number.isSafeInteger(event.id)
+      && event.id > 0
+      && Number.isInteger(event.round)
+      && event.round >= 1
+      && event.round <= 1000
+      && (
+        (event.kind === "system"
+          && typeof event.text === "string"
+          && event.text.length > 0
+          && event.text.length <= 180)
+        || (event.kind === "round-result"
+          && CARD_TYPES.includes(event.cardType)
+          && typeof event.playedBy === "string"
+          && event.playedBy.length <= 18
+          && typeof event.guesser === "string"
+          && event.guesser.length <= 18
+          && typeof event.correct === "boolean"
+          && validAttributes(event.attributes))
+      )
+    ))) return false;
     if (!validCard(snapshot.setupCard) || !validCard(snapshot.eliminated)) return false;
     if (!validGuessSet(snapshot.guesses) || !validGuessSet(snapshot.setupGuesses)) return false;
     if (snapshot.pending !== null && (
@@ -1331,11 +1631,15 @@
     if (snapshot.lastReveal && (
       !validCard(snapshot.lastReveal.actualType)
       || (snapshot.lastReveal.guess !== undefined && !validCard(snapshot.lastReveal.guess))
-      || (snapshot.lastReveal.revealedCard !== undefined && !validCard(snapshot.lastReveal.revealedCard))
-      || (snapshot.lastReveal.spyCards !== undefined && (
-        !Array.isArray(snapshot.lastReveal.spyCards)
-        || snapshot.lastReveal.spyCards.length > 2
-        || !snapshot.lastReveal.spyCards.every((type) => validCard(type) && type !== null)
+      || !["player", "ai"].includes(snapshot.lastReveal.guesser)
+      || typeof snapshot.lastReveal.effectSummary !== "string"
+      || snapshot.lastReveal.effectSummary.length > 180
+      || typeof snapshot.lastReveal.correct !== "boolean"
+      || !validAttributes(snapshot.lastReveal.attributes)
+      || (snapshot.lastReveal.revealedCards !== undefined && (
+        !Array.isArray(snapshot.lastReveal.revealedCards)
+        || snapshot.lastReveal.revealedCards.length > 2
+        || !snapshot.lastReveal.revealedCards.every((type) => CARD_TYPES.includes(type))
       ))
       || (snapshot.lastReveal.owner && !["player", "ai"].includes(snapshot.lastReveal.owner))
       || (snapshot.lastReveal.summary && snapshot.lastReveal.summary.length > 256)
@@ -1354,26 +1658,7 @@
   function renderActions() {
     actionArea.replaceChildren();
 
-    if (state.phase === "player-joker-select" && state.pendingJokerReveal) {
-      const target = state.players[state.pendingJokerReveal.target];
-      const controls = document.createElement("div");
-      controls.className = "reveal-actions";
-      const prompt = document.createElement("p");
-      prompt.textContent = "Escolha a posição da carta, da esquerda para a direita:";
-      const options = document.createElement("div");
-      options.className = "reveal-options";
-      target.hand.forEach((_, index) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "reveal-choice";
-        button.textContent = String(index + 1);
-        button.setAttribute("aria-label", `Revelar carta ${index + 1} do adversário`);
-        button.addEventListener("click", () => submitJokerReveal(index));
-        options.append(button);
-      });
-      controls.append(prompt, options);
-      actionArea.append(controls);
-    } else if (state.phase === "setup-guess") {
+    if (state.phase === "setup-guess") {
       COMMON_CARDS.forEach((type, index) => {
         addGuessButton(type, () => submitSetupGuess(type), index, COMMON_CARDS.length);
       });
@@ -1382,14 +1667,6 @@
         const button = addGuessButton(type, () => submitGuess("player", type), index, CARD_TYPES.length);
         button.disabled = type === state.eliminated;
       });
-      const hint = document.createElement("button");
-      hint.type = "button";
-      hint.className = "hint-button";
-      hint.disabled = state.players.player.luck < 1 || state.hintUsed;
-      hint.textContent = `✦ ${state.players.player.luck}`;
-      hint.setAttribute("aria-label", `Usar sorte: ${state.players.player.luck}`);
-      hint.addEventListener("click", useLuck);
-      actionArea.append(hint);
     }
   }
 
@@ -1422,7 +1699,7 @@
     timerValue.textContent = String(state.seconds);
     timer.classList.toggle("is-low", state.seconds <= 10);
     const timedPhases = ["player-play", "player-guess", "setup-guess", "player-joker-select"];
-    if (onlineRole) timedPhases.push("ai-play", "ai-guess", "ai-joker-select", "setup-wait");
+    if (onlineRole) timedPhases.push("ai-play", "ai-guess", "ai-joker-select");
     timer.hidden = !timedPhases.includes(state.phase);
   }
 
@@ -1474,6 +1751,7 @@
     drawPlayerHand(ctx);
     drawGuessMarkers(ctx);
     drawAttributeAnimations(ctx);
+    drawVisualEffect(ctx);
 
     ctx.fillStyle = "rgba(233, 243, 224, .66)";
     ctx.font = "10px Consolas, monospace";
@@ -1541,6 +1819,7 @@
     drawPlayerHand(ctx);
     drawGuessMarkers(ctx);
     drawAttributeAnimations(ctx);
+    drawVisualEffect(ctx);
 
     ctx.fillStyle = "rgba(233, 243, 224, .72)";
     ctx.font = "16px Consolas, monospace";
@@ -1662,6 +1941,42 @@
     });
   }
 
+  function drawVisualEffect(ctx) {
+    if (!state.visualEffect || state.visualEffectStartedAt === null) return;
+    const progress = (performance.now() - state.visualEffectStartedAt) / 1000;
+    if (progress < 0 || progress >= 1) return;
+    const mobile = isMobileCanvas();
+    const centerX = canvasWidth / 2;
+    const centerY = mobile ? 650 : 326;
+    const alpha = 1 - progress;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (state.visualEffect.kind === "swap") {
+      const size = (mobile ? 48 : 36) + progress * (mobile ? 36 : 28);
+      ctx.fillStyle = "#d9c477";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `bold ${Math.round(size)}px 'Segoe UI Symbol', sans-serif`;
+      ctx.fillText("⇄", centerX, centerY);
+      ctx.font = `bold ${mobile ? 18 : 13}px 'Segoe UI', sans-serif`;
+      ctx.fillText("MÃOS TROCADAS", centerX, centerY + (mobile ? 78 : 58));
+    } else if (state.visualEffect.kind === "reveal") {
+      const radius = (mobile ? 72 : 54) + progress * (mobile ? 130 : 110);
+      ctx.strokeStyle = state.visualEffect.cardType
+        ? CARDS[state.visualEffect.cardType].color
+        : "#c9ef74";
+      ctx.lineWidth = mobile ? 5 : 3;
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, radius, radius * (mobile ? 0.62 : 0.54), 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = state.visualEffect.correct ? "#c9ef74" : "#ff887d";
+      ctx.font = `bold ${mobile ? 22 : 17}px 'Segoe UI', sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(state.visualEffect.correct ? "✓" : "!", centerX, centerY - (mobile ? 150 : 116));
+    }
+    ctx.restore();
+  }
+
   function drawExtraDeck(ctx) {
     const mobile = isMobileCanvas();
     const x = mobile ? 32 : 48;
@@ -1693,48 +2008,72 @@
   }
 
   function drawAiHand(ctx) {
-    if (isMobileCanvas()) {
-      drawMobileAiHand(ctx);
-      return;
-    }
     const handSize = state.phase === "dealing" ? state.dealt.ai : state.players.ai.hand.length;
-    const visibleCount = Math.min(handSize, MAX_FACE_DOWN_CARDS);
-    const cardWidth = 94;
-    const cardHeight = 132;
-    const spacing = visibleCount > 1 ? Math.min(30, 520 / (visibleCount - 1)) : 0;
-    const startX = 550 - ((visibleCount - 1) * spacing) / 2;
-
-    for (let index = 0; index < visibleCount; index += 1) {
-      const normalized = visibleCount > 1 ? (index / (visibleCount - 1)) * 2 - 1 : 0;
-      const x = startX + index * spacing;
-      const y = 88 + Math.abs(normalized) * 9;
-      drawCard(ctx, x - cardWidth / 2, y - cardHeight / 2, null, cardWidth, cardHeight);
+    const layouts = getOpponentCardLayouts();
+    const selectable = state.phase === "player-joker-select"
+      && state.pendingJokerReveal
+      && state.pendingJokerReveal.target === "ai";
+    for (const layout of layouts) {
+      const selected = selectable && state.pendingJokerReveal.selectedIndices.includes(layout.index);
+      const hovered = selectable && layout.index === hoverOpponentCard;
+      const y = layout.y - (hovered ? 12 : 0);
+      drawCard(
+        ctx,
+        layout.x - layout.width / 2,
+        y - layout.height / 2,
+        null,
+        layout.width,
+        layout.height,
+        0,
+        selected || hovered
+      );
+      if (selected) drawSelectedCardMarker(ctx, layout.x, y - layout.height / 2);
     }
     if (handSize > MAX_FACE_DOWN_CARDS) {
       ctx.fillStyle = "#c9ef74";
-      ctx.font = "9px Consolas, monospace";
+      ctx.font = `${isMobileCanvas() ? 14 : 9}px Consolas, monospace`;
       ctx.textAlign = "center";
-      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, 550, 170);
+      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, isMobileCanvas() ? canvasWidth / 2 : 550, isMobileCanvas() ? 330 : 170);
     }
   }
 
-  function drawMobileAiHand(ctx) {
+  function getOpponentCardLayouts() {
     const handSize = state.phase === "dealing" ? state.dealt.ai : state.players.ai.hand.length;
     const visibleCount = Math.min(handSize, MAX_FACE_DOWN_CARDS);
     const cardWidth = 94;
     const cardHeight = 132;
-    const spacing = visibleCount > 1 ? Math.min(42, 460 / (visibleCount - 1)) : 0;
-    const startX = canvasWidth / 2 - ((visibleCount - 1) * spacing) / 2;
+    const mobile = isMobileCanvas();
+    const spacing = visibleCount > 1
+      ? Math.min(mobile ? 42 : 30, (mobile ? 460 : 520) / (visibleCount - 1))
+      : 0;
+    const centerX = mobile ? canvasWidth / 2 : 550;
+    const startX = centerX - ((visibleCount - 1) * spacing) / 2;
+    const layouts = [];
     for (let index = 0; index < visibleCount; index += 1) {
-      const x = startX + index * spacing;
-      drawCard(ctx, x - cardWidth / 2, 250 - cardHeight / 2, null, cardWidth, cardHeight);
+      const normalized = visibleCount > 1 ? (index / (visibleCount - 1)) * 2 - 1 : 0;
+      layouts.push({
+        index,
+        x: startX + index * spacing,
+        y: mobile ? 250 : 88 + Math.abs(normalized) * 9,
+        width: cardWidth,
+        height: cardHeight
+      });
     }
-    if (handSize > MAX_FACE_DOWN_CARDS) {
-      ctx.fillStyle = "#c9ef74";
-      ctx.font = "14px Consolas, monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, canvasWidth / 2, 330);
-    }
+    return layouts;
+  }
+
+  function drawSelectedCardMarker(ctx, x, top) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x + 33, top + 13, 9, 0, Math.PI * 2);
+    ctx.fillStyle = "#c9ef74";
+    ctx.fill();
+    ctx.fillStyle = "#17352f";
+    ctx.font = "bold 12px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("✓", x + 33, top + 13);
+    ctx.restore();
   }
 
   function getPlayerCardLayouts() {
@@ -1875,11 +2214,30 @@
     ctx.fill();
 
     const setupVisible = ["setup-result", "dice-roll"].includes(state.phase);
-    const normalVisible = state.lastReveal && ["result", "game-over"].includes(state.phase);
+    const normalVisible = state.lastReveal && [
+      "result", "game-over", "player-joker-select", "ai-joker-select"
+    ].includes(state.phase);
     const visibleCard = setupVisible
       ? state.setupCard
       : normalVisible ? state.lastReveal.actualType : null;
-    drawCard(ctx, centerX - cardWidth / 2, centerY - cardHeight / 2, visibleCard, cardWidth, cardHeight);
+    const revealProgress = state.visualEffect
+      && state.visualEffect.kind === "reveal"
+      && state.visualEffectStartedAt !== null
+      ? Math.min(1, Math.max(0, (performance.now() - state.visualEffectStartedAt) / 1000))
+      : 1;
+    const revealScale = normalVisible ? 0.88 + revealProgress * 0.12 : 1;
+    const drawnWidth = cardWidth * revealScale;
+    const drawnHeight = cardHeight * revealScale;
+    drawCard(
+      ctx,
+      centerX - drawnWidth / 2,
+      centerY - drawnHeight / 2,
+      visibleCard,
+      drawnWidth,
+      drawnHeight,
+      0,
+      normalVisible && revealProgress < 0.8
+    );
     ctx.fillStyle = "rgba(226, 238, 221, .72)";
     ctx.font = `${mobile ? 14 : 10}px Consolas, monospace`;
     const openingGuess = ["setup-guess", "setup-revealing"].includes(state.phase);
@@ -1888,21 +2246,24 @@
       : normalVisible ? CARDS[visibleCard].name.toUpperCase()
         : openingGuess ? "CARTA DE ABERTURA" : "CARTA JOGADA";
     ctx.fillText(label, centerX, centerY + (mobile ? 113 : 91));
-    if (normalVisible && state.lastReveal.revealedCard) {
+    if (normalVisible && state.lastReveal.revealedCards && state.lastReveal.revealedCards.length > 0) {
       const revealWidth = mobile ? 72 : 60;
       const revealHeight = mobile ? 104 : 86;
-      const revealX = centerX + (mobile ? 140 : 132);
-      drawCard(
-        ctx,
-        revealX - revealWidth / 2,
-        centerY - revealHeight / 2,
-        state.lastReveal.revealedCard,
-        revealWidth,
-        revealHeight
-      );
-      ctx.fillStyle = "rgba(226, 238, 221, .72)";
-      ctx.font = `${mobile ? 11 : 8}px Consolas, monospace`;
-      ctx.fillText("REVELADA", revealX, centerY + revealHeight / 2 + (mobile ? 16 : 12));
+      const gap = mobile ? 84 : 68;
+      state.lastReveal.revealedCards.forEach((card, index) => {
+        const revealX = centerX + (mobile ? 140 : 132) + index * gap;
+        drawCard(
+          ctx,
+          revealX - revealWidth / 2,
+          centerY - revealHeight / 2,
+          card,
+          revealWidth,
+          revealHeight
+        );
+        ctx.fillStyle = "rgba(226, 238, 221, .72)";
+        ctx.font = `${mobile ? 11 : 8}px Consolas, monospace`;
+        ctx.fillText(`REVELADA ${index + 1}`, revealX, centerY + revealHeight / 2 + (mobile ? 16 : 12));
+      });
     }
     ctx.restore();
   }
@@ -2020,15 +2381,44 @@
     return -1;
   }
 
+  function getOpponentCardAtPointer(event) {
+    if (
+      state?.phase !== "player-joker-select"
+      || !state.pendingJokerReveal
+      || state.pendingJokerReveal.target !== "ai"
+    ) return -1;
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * (canvasWidth / rect.width);
+    const y = (event.clientY - rect.top) * (canvasHeight / rect.height);
+    const layouts = getOpponentCardLayouts();
+    for (let index = layouts.length - 1; index >= 0; index -= 1) {
+      const layout = layouts[index];
+      if (state.pendingJokerReveal.selectedIndices.includes(layout.index)) continue;
+      if (
+        Math.abs(x - layout.x) <= layout.width / 2
+        && Math.abs(y - layout.y) <= layout.height / 2
+      ) return layout.index;
+    }
+    return -1;
+  }
+
   function handleCanvasPointerMove(event) {
+    const selectingJoker = state?.phase === "player-joker-select";
     const nextHover = state?.phase === "player-play" ? getCardAtPointer(event) : -1;
-    if (hoverCard === nextHover) return;
+    const nextOpponentHover = selectingJoker ? getOpponentCardAtPointer(event) : -1;
+    if (hoverCard === nextHover && hoverOpponentCard === nextOpponentHover) return;
     hoverCard = nextHover;
-    canvas.style.cursor = nextHover >= 0 ? "pointer" : "default";
-    if (state?.phase === "player-play") drawTable();
+    hoverOpponentCard = nextOpponentHover;
+    canvas.style.cursor = nextHover >= 0 || nextOpponentHover >= 0 ? "pointer" : "default";
+    if (state?.phase === "player-play" || selectingJoker) drawTable();
   }
 
   function handleCanvasClick(event) {
+    if (state?.phase === "player-joker-select") {
+      const cardIndex = getOpponentCardAtPointer(event);
+      if (cardIndex >= 0) submitJokerReveal(cardIndex);
+      return;
+    }
     if (state?.phase !== "player-play") return;
     const cardIndex = getCardAtPointer(event);
     if (cardIndex < 0) return;
@@ -2043,8 +2433,9 @@
   canvas.addEventListener("pointermove", handleCanvasPointerMove);
   canvas.addEventListener("pointerleave", () => {
     hoverCard = -1;
+    hoverOpponentCard = -1;
     canvas.style.cursor = "default";
-    if (state?.phase === "player-play") drawTable();
+    if (state?.phase === "player-play" || state?.phase === "player-joker-select") drawTable();
   });
   canvas.addEventListener("click", handleCanvasClick);
   canvas.addEventListener("keydown", (event) => {

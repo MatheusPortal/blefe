@@ -17,7 +17,6 @@
       <div class="topbar-actions">
         <button class="text-button" id="sound-toggle" type="button" aria-pressed="true">♫ Som ligado</button>
         <button class="text-button" id="connection-log-button" type="button" hidden>Conexão: offline</button>
-        <button class="text-button" id="chat-open-button" type="button" hidden>Chat</button>
         <button class="text-button" id="leave-game-button" type="button" hidden>Menu</button>
         <button class="text-button" id="rules-button" type="button">Como jogar</button>
       </div>
@@ -39,9 +38,18 @@
     <section class="game-shell" id="game-shell" aria-label="Jogo de cartas" hidden>
       <div class="table-wrap">
         <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
-        <div class="timer" id="timer" aria-label="Tempo restante" hidden>
-          <span class="timer-icon" aria-hidden="true">◷</span>
-          <strong id="timer-value">60</strong><span>s</span>
+        <div class="turn-tools">
+          <div class="timer" id="timer" aria-label="Tempo restante" hidden>
+            <span class="timer-icon" aria-hidden="true">◷</span>
+            <strong id="timer-value">40</strong><span>s</span>
+          </div>
+          <button class="turn-tool-button hint-button" id="use-luck-button" type="button" hidden>✦ Usar sorte</button>
+          <button class="turn-tool-button swap-hands-button" id="swap-hands-button" type="button" hidden>🔄 Trocar mãos</button>
+        </div>
+        <div class="round-countdown" id="round-countdown" role="status" aria-live="polite" hidden>
+          <span>Próxima jogada</span>
+          <strong id="round-countdown-value">4</strong>
+          <span>s</span>
         </div>
         <div class="action-area" id="action-area" role="group" aria-label="Opções de palpite" hidden></div>
         <div class="table-overlay" id="table-overlay" hidden>
@@ -50,10 +58,24 @@
             <button class="primary-button" id="play-again-button" type="button" hidden>Jogar novamente</button>
           </div>
         </div>
+        <div class="game-chat-widget" id="game-chat-widget" hidden>
+          <section class="game-chat-panel" id="game-chat-panel" aria-label="Chat da partida" hidden>
+            <div class="game-panel-heading">
+              <h2>Chat</h2>
+              <span id="chat-peer-name">Partida P2P</span>
+              <button class="chat-toggle-button" id="chat-toggle-button" type="button" aria-controls="game-chat-panel" aria-expanded="true" aria-label="Minimizar chat" title="Minimizar chat">−</button>
+            </div>
+            <ol class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions"></ol>
+            <form class="chat-form" id="chat-form">
+              <label class="sr-only" for="chat-input">Mensagem</label>
+              <input id="chat-input" name="message" type="text" maxlength="500" autocomplete="off" placeholder="Escreva uma mensagem..." disabled>
+              <button class="primary-button" id="chat-send-button" type="submit" disabled>Enviar</button>
+            </form>
+          </section>
+        </div>
       </div>
 
       <div class="table-footer">
-        <div class="table-notice" id="table-notice" role="status" aria-live="polite" aria-atomic="true" hidden></div>
         <button class="restart-button" id="restart-button" type="button">↻ <span>Nova partida</span></button>
       </div>
     </section>
@@ -69,21 +91,143 @@
       <button class="icon-button" id="close-rules" type="button" aria-label="Fechar regras">×</button>
     </div>
     <div class="rules-content">
-      <p>Você e a IA começam com <strong>5 vidas e 7 cartas aleatórias</strong>. Uma carta do baralho extra de 20 é virada no centro. Quem acertar o palpite começa; se nenhum ou ambos acertarem, os dados decidem. Empates nos dados são lançados novamente.</p>
-      <ul>
-        <li><span>🦁 Leão</span> — se o palpite estiver errado, quem adivinhou perde 2 vidas.</li>
-        <li><span>🐇 Coelho</span> — se acertar, quem adivinhou ganha 1 ponto de sorte.</li>
-        <li><span>🐄 Vaca</span> — se errar, quem adivinhou compra 2 cartas extras.</li>
-        <li><span>🐟 Peixe</span> — acerto: +1 sorte; erro: perde sorte ou, se não houver, 1 vida.</li>
-        <li><span>🐅 Tigre</span> — se errar, quem adivinhou perde 1 vida.</li>
-        <li><span>🐒 Macaco</span> — se acertar, quem adivinhou compra 1 extra.</li>
-        <li><span>🐘 Elefante</span> — se errar, quem jogou recupera 1 vida (máximo 5).</li>
-        <li><span>🐢 Tartaruga</span> — se acertar, quem adivinhou ganha um escudo contra o próximo dano.</li>
-        <li><span>🃏 Coringa</span> — troca o palpite, causa 1 de dano e dá até 3 cartas extras.</li>
-      </ul>
-      <p>O Coringa tem 2% de chance de entrar na mão inicial. Cartas extras compradas saem do baralho de 20 e entram na mão de quem as recebe; a mão da IA permanece escondida. No máximo 20 cartas viradas para baixo são desenhadas na mesa. A sorte elimina uma opção no palpite. Passe o mouse nas suas cartas para ver o efeito; clique para jogar. Você tem 60 segundos por ação.</p>
-      <p>Cartas jogadas não voltam à mão. Vence quem ficar sem cartas ou reduzir a vida do adversário a zero.</p>
-      <p class="rules-note">Escudos bloqueiam um evento de dano. A IA usa o histórico e varia as jogadas.</p>
+      <p>Você e o adversário começam com <strong>5 vidas e 7 cartas</strong>. Em cada turno, uma pessoa joga uma carta e a outra tenta adivinhar o animal. Um acerto ou erro aplica o efeito indicado abaixo. Você tem 40 segundos por ação; após o resultado, há uma pausa visual de 4 segundos antes da próxima jogada.</p>
+      <h3>Cartas de ataque</h3>
+      <div class="rules-card-grid">
+        <article class="rules-card" style="--card-accent:#e9a16f">
+          <header class="rules-card-heading"><span>🦁</span><h4>Leão</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-loss">♥ −2 vidas</span><span class="rules-chip is-gain">▣ +1 carta</span></p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">✦ +1 sorte</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Todos</span><span class="rules-chip is-neutral">Sem efeito</span></p>
+          </section>
+        </article>
+        <article class="rules-card" style="--card-accent:#ec8b51">
+          <header class="rules-card-heading"><span>🐅</span><h4>Tigre</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-loss">♥ −1 vida</span><span class="rules-chip is-gain">▣ +2 cartas</span></p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-neutral">Sem benefício</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">♥ +1 vida</span><span class="rules-chip is-action">Vida cheia: +1 escudo</span></p>
+          </section>
+        </article>
+        <article class="rules-card" style="--card-accent:#7ec9e8">
+          <header class="rules-card-heading"><span>🐟</span><h4>Peixe</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +3 cartas</span></p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">✦ +2 sorte</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">♥ +1 vida</span></p>
+          </section>
+        </article>
+        <article class="rules-card" style="--card-accent:#c49668">
+          <header class="rules-card-heading"><span>🐒</span><h4>Macaco</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +4 cartas</span></p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">✦ +3 sorte</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">✦ +1 sorte</span></p>
+          </section>
+        </article>
+        <article class="rules-card" style="--card-accent:#91a8b8">
+          <header class="rules-card-heading"><span>🐘</span><h4>Elefante</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-loss">♥ −2 vidas</span><span class="rules-chip is-gain">▣ +2 cartas</span></p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">⬡ +1 escudo</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">⬡ +1 escudo</span></p>
+          </section>
+        </article>
+      </div>
+      <h3>Cartas de defesa</h3>
+      <div class="rules-card-grid">
+        <article class="rules-card" style="--card-accent:#f0d477">
+          <header class="rules-card-heading"><span>🐄</span><h4>Vaca</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +2 cartas</span></p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">⬡ +2 escudos</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">✦ +1 sorte</span></p>
+          </section>
+        </article>
+        <article class="rules-card" style="--card-accent:#bd9bfa">
+          <header class="rules-card-heading"><span>🐇</span><h4>Coelho</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +3 cartas</span></p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">✦ +2 sorte</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">✦ +1 sorte</span></p>
+          </section>
+        </article>
+        <article class="rules-card" style="--card-accent:#7bc99c">
+          <header class="rules-card-heading"><span>🐢</span><h4>Tartaruga</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +1 carta</span><span class="rules-chip is-loss">⬡ −1 escudo</span></p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">⬡ +1 escudo</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">♥ +1 vida</span><span class="rules-chip is-action">Vida cheia: +1 escudo</span></p>
+          </section>
+        </article>
+      </div>
+      <h3>Cartas especiais</h3>
+      <div class="rules-card-grid">
+        <article class="rules-card" style="--card-accent:#f1839a">
+          <header class="rules-card-heading"><span>🃏</span><h4>Coringa</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">♥ +1 vida</span><span class="rules-chip is-action">Revela até 2 cartas</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Todos</span><span class="rules-chip is-neutral">Sem efeito</span></p>
+          </section>
+        </article>
+        <article class="rules-card" style="--card-accent:#d9c477">
+          <header class="rules-card-heading"><span>🔄</span><h4>Troca</h4></header>
+          <section class="rules-card-outcome">
+            <h5>Se errar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-action">Pode trocar as mãos por 2 rodadas</span></p>
+          </section>
+          <section class="rules-card-outcome">
+            <h5>Se acertar</h5>
+            <p class="rules-effect-row"><span class="rules-effect-target">Todos</span><span class="rules-chip is-neutral">Sem efeito</span></p>
+          </section>
+        </article>
+      </div>
+      <div class="rules-facts">
+        <span class="rules-chip is-action">Coringa: 2% de chance</span>
+        <span class="rules-chip is-action">Troca: carta única</span>
+        <span class="rules-chip is-action">Sorte elimina uma opção</span>
+        <span class="rules-chip is-action">Escudos bloqueiam dano</span>
+        <span class="rules-chip is-action">Máximo de 5 vidas</span>
+      </div>
+      <p>As cartas compradas permanecem na mão. As jogadas e os avisos do sistema aparecem no chat após o resultado da rodada.</p>
+      <p class="rules-note">Cartas jogadas saem da mão. Vence quem eliminar o adversário ou ficar sem cartas. A IA decide suas jogadas no modo offline.</p>
     </div>
   </dialog>
 
@@ -114,23 +258,6 @@
       <button class="icon-button" id="close-connection-log" type="button" aria-label="Fechar log">×</button>
     </div>
     <ol class="connection-log" id="connection-log" aria-live="polite"></ol>
-  </dialog>
-
-  <dialog id="chat-dialog" aria-labelledby="chat-title">
-    <div class="dialog-head">
-      <div>
-        <p class="eyebrow">CHAT P2P DA PARTIDA</p>
-        <h2 id="chat-title">Conversa</h2>
-      </div>
-      <button class="icon-button" id="close-chat" type="button" aria-label="Fechar chat">×</button>
-    </div>
-    <ol class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions"></ol>
-    <form class="chat-form" id="chat-form">
-      <label class="sr-only" for="chat-input">Mensagem</label>
-      <input id="chat-input" name="message" type="text" maxlength="500" autocomplete="off" placeholder="Escreva uma mensagem..." disabled>
-      <button class="primary-button" id="chat-send-button" type="submit" disabled>Enviar</button>
-    </form>
-    <p class="chat-status" id="chat-status" role="status" aria-live="polite">O chat estará disponível quando a conexão P2P estiver ativa.</p>
   </dialog>
 
   <script src="online.js"></script>

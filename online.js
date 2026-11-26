@@ -12,14 +12,32 @@
   const connectionStatusButton = document.querySelector("#connection-log-button");
   const leaveGameButton = document.querySelector("#leave-game-button");
   const onlinePlayerCount = document.querySelector("#online-player-count");
-  const chatOpenButton = document.querySelector("#chat-open-button");
-  const chatDialog = document.querySelector("#chat-dialog");
-  const chatTitle = document.querySelector("#chat-title");
+  const chatWidget = document.querySelector("#game-chat-widget");
+  const chatPanel = document.querySelector("#game-chat-panel");
+  const chatToggleButton = document.querySelector("#chat-toggle-button");
+  const chatPeerName = document.querySelector("#chat-peer-name");
   const chatMessages = document.querySelector("#chat-messages");
   const chatForm = document.querySelector("#chat-form");
   const chatInput = document.querySelector("#chat-input");
   const chatSendButton = document.querySelector("#chat-send-button");
-  const chatStatus = document.querySelector("#chat-status");
+  const chatCards = {
+    leao: ["🦁", "Leão"],
+    coelho: ["🐇", "Coelho"],
+    vaca: ["🐄", "Vaca"],
+    peixe: ["🐟", "Peixe"],
+    tigre: ["🐅", "Tigre"],
+    macaco: ["🐒", "Macaco"],
+    elefante: ["🐘", "Elefante"],
+    tartaruga: ["🐢", "Tartaruga"],
+    troca: ["🔄", "Troca"],
+    coringa: ["🃏", "Coringa"]
+  };
+  const chatAttributes = {
+    hp: ["Vida", "Vidas"],
+    luck: ["Sorte", "Sorte"],
+    shields: ["Escudo", "Escudos"],
+    cards: ["Carta", "Cartas"]
+  };
 
   let signalingSocket = null;
   let peerConnection = null;
@@ -49,25 +67,35 @@
   }
 
   function setChatAvailability(available) {
-    chatOpenButton.hidden = !available;
+    chatPanel.hidden = !available;
+    chatWidget.hidden = !available;
     chatInput.disabled = !available;
     chatSendButton.disabled = !available;
-    if (!available && chatDialog.open) chatDialog.close();
+    setChatMinimized(available && window.matchMedia("(max-width: 650px)").matches);
+  }
+
+  function setChatMinimized(minimized) {
+    chatWidget.classList.toggle("is-minimized", minimized);
+    chatToggleButton.setAttribute("aria-expanded", String(!minimized));
+    chatToggleButton.setAttribute("aria-label", minimized ? "Expandir chat" : "Minimizar chat");
+    chatToggleButton.title = minimized ? "Expandir chat" : "Minimizar chat";
+    chatToggleButton.textContent = minimized ? "+" : "−";
   }
 
   function clearChat() {
     chatMessages.replaceChildren();
-    chatTitle.textContent = "Conversa";
-    chatStatus.textContent = "O chat estará disponível quando a conexão P2P estiver ativa.";
+    chatPeerName.textContent = "Partida P2P";
     setChatAvailability(false);
   }
 
-  function appendChatMessage(nickname, text, ownMessage) {
+  function appendChatMessage(nickname, text, ownMessage = false) {
     const item = document.createElement("li");
-    item.className = ownMessage ? "chat-message chat-message-own" : "chat-message";
+    item.className = nickname === "Sistema"
+      ? "chat-message chat-system-message"
+      : ownMessage ? "chat-message chat-message-own" : "chat-message";
     const author = document.createElement("span");
     author.className = "chat-author";
-    author.textContent = `${nickname} · ${new Date().toLocaleTimeString("pt-BR", {
+    author.textContent = `${nickname === "Sistema" ? "Sistema:" : nickname} · ${new Date().toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit"
     })}`;
@@ -77,6 +105,77 @@
     chatMessages.append(item);
     while (chatMessages.children.length > 100) chatMessages.firstElementChild.remove();
     chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function appendRoundResult(event) {
+    const cardInfo = chatCards[event.cardType];
+    if (!cardInfo || !Array.isArray(event.attributes)) return;
+    const item = document.createElement("li");
+    item.className = "chat-message chat-system-message chat-round-result-message";
+    const author = document.createElement("span");
+    author.className = "chat-author";
+    author.textContent = `Sistema: · ${new Date().toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit"
+    })}`;
+
+    const card = document.createElement("div");
+    card.className = "chat-result-card";
+    const heading = document.createElement("div");
+    heading.className = "chat-result-heading";
+    const round = document.createElement("span");
+    round.className = "chat-result-round";
+    round.textContent = `R${event.round}`;
+    const title = document.createElement("strong");
+    title.className = "chat-result-title";
+    title.textContent = `${cardInfo[0]} ${cardInfo[1]}`;
+    const outcome = document.createElement("span");
+    outcome.className = `chat-result-outcome ${event.correct ? "is-correct" : "is-wrong"}`;
+    outcome.textContent = event.correct ? "ACERTO" : "ERRO";
+    heading.append(round, title, outcome);
+
+    const guesser = document.createElement("div");
+    guesser.className = "chat-result-guesser";
+    guesser.textContent = `${event.guesser} ${event.correct ? "acertou" : "errou"} o palpite`;
+    const attributes = document.createElement("div");
+    attributes.className = "chat-result-attributes";
+    for (const change of event.attributes) {
+      const attributeInfo = chatAttributes[change.attribute];
+      if (!attributeInfo || !Number.isInteger(change.value) || change.value === 0) continue;
+      const row = document.createElement("div");
+      row.className = `chat-result-attribute ${change.attribute}`;
+      const player = document.createElement("span");
+      player.className = "chat-result-player";
+      player.textContent = change.playerName;
+      const amount = Math.abs(change.value);
+      const value = document.createElement("strong");
+      value.className = change.value > 0 ? "is-gain" : "is-loss";
+      value.textContent = `${change.value > 0 ? "+" : "−"}${amount}`;
+      const label = document.createElement("span");
+      label.className = "chat-result-label";
+      label.textContent = amount === 1 ? attributeInfo[0] : attributeInfo[1];
+      row.append(player, value, label);
+      attributes.append(row);
+    }
+    if (!attributes.childElementCount) {
+      const unchanged = document.createElement("span");
+      unchanged.className = "chat-result-empty";
+      unchanged.textContent = "Sem alterações";
+      attributes.append(unchanged);
+    }
+    card.append(heading, guesser, attributes);
+    item.append(author, card);
+    chatMessages.append(item);
+    while (chatMessages.children.length > 100) chatMessages.firstElementChild.remove();
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function logGameEvent(message) {
+    if (chatPanel.hidden) return;
+    if (typeof message === "string" && message.trim()) appendChatMessage("Sistema", message.trim());
+    else if (message && message.kind === "system" && typeof message.text === "string" && message.text.trim()) {
+      appendChatMessage("Sistema", message.text.trim());
+    } else if (message && message.kind === "round-result") appendRoundResult(message);
   }
 
   function logConnection(message) {
@@ -155,8 +254,7 @@
       setStatus("Conexão direta estabelecida. Iniciando partida...");
       setTopbarStatus("P2P conectado");
       clearChat();
-      chatTitle.textContent = `Com ${opponentNickname}`;
-      chatStatus.textContent = `Conectado diretamente com ${opponentNickname}.`;
+      chatPeerName.textContent = `Com ${opponentNickname}`;
       setChatAvailability(true);
       const session = makeGameSession();
       const names = { local: activeNickname, remote: opponentNickname };
@@ -167,7 +265,6 @@
     channel.onclose = () => {
       logConnection("Canal de dados P2P fechado.");
       setChatAvailability(false);
-      chatStatus.textContent = "Chat indisponível: a conexão com o adversário foi encerrada.";
       setTopbarStatus("desconectado");
       setStatus("A conexão com o adversário foi encerrada.");
     };
@@ -401,7 +498,6 @@
 
   function closePeerConnection() {
     setChatAvailability(false);
-    chatStatus.textContent = "Chat indisponível: a partida não está conectada.";
     if (dataChannel) {
       dataChannel.onopen = null;
       dataChannel.onclose = null;
@@ -475,25 +571,30 @@
     onlineDialog.close();
   });
   document.querySelector("#close-connection-log").addEventListener("click", () => connectionDialog.close());
-  document.querySelector("#close-chat").addEventListener("click", () => chatDialog.close());
-  chatOpenButton.addEventListener("click", () => {
-    chatDialog.showModal();
-    chatInput.focus();
-  });
   chatForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const text = chatInput.value.trim().replace(/\s+/g, " ");
     if (!text) return;
     if (text.length > 500) {
-      chatStatus.textContent = "A mensagem não pode passar de 500 caracteres.";
+      chatInput.setCustomValidity("A mensagem não pode passar de 500 caracteres.");
+      chatInput.reportValidity();
       return;
     }
     if (sendData({ kind: "chat-message", text })) {
       appendChatMessage(activeNickname, text, true);
       chatInput.value = "";
-      chatStatus.textContent = `Conectado diretamente com ${opponentNickname}.`;
     } else {
-      chatStatus.textContent = "Não foi possível enviar. Verifique a conexão P2P.";
+      logGameEvent("Não foi possível enviar a mensagem; verifique a conexão.");
+    }
+  });
+  chatInput.addEventListener("input", () => chatInput.setCustomValidity(""));
+  chatToggleButton.addEventListener("click", () => {
+    const minimized = !chatWidget.classList.contains("is-minimized");
+    setChatMinimized(minimized);
+    if (!minimized) {
+      window.requestAnimationFrame(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      });
     }
   });
   connectionStatusButton.addEventListener("click", () => connectionDialog.showModal());
@@ -502,7 +603,6 @@
     leaveSession();
     onlineDialog.close();
     connectionDialog.close();
-    chatDialog.close();
     window.BlefeGame.leaveToMenu();
   });
   cancelMatchButton.addEventListener("click", cancelMatchSearch);
@@ -526,6 +626,7 @@
 
   window.BlefeOnline = Object.freeze({
     leaveSession,
-    logConnection
+    logConnection,
+    logGameEvent
   });
 })();
