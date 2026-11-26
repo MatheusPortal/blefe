@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: blefe-de-mesa
+    runtime: docker
+    plan: free
+    region: ohio
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true

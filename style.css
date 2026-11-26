@@ -31,11 +31,12 @@ button { font: inherit; }
 }
 
 .topbar {
-  height: 48px;
+  min-height: 48px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -44,6 +45,8 @@ button { font: inherit; }
   align-items: center;
   gap: 14px;
 }
+
+body.online-mode #sound-toggle { display: none; }
 
 .brand {
   display: inline-flex;
@@ -78,6 +81,111 @@ button { font: inherit; }
 
 .text-button { min-height: 36px; padding: 8px 4px; font-size: 12px; }
 .text-button:hover, .restart-button:hover { color: var(--lime); }
+
+.main-menu {
+  min-height: min(690px, 78vh);
+  display: grid;
+  place-items: center;
+  padding: 30px 12px;
+}
+
+.main-menu[hidden], .game-shell[hidden] { display: none; }
+
+.menu-card {
+  width: min(480px, 100%);
+  padding: clamp(24px, 6vw, 46px);
+  border: 1px solid rgba(201, 239, 116, .2);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(28, 62, 53, .96), rgba(20, 38, 39, .96));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .28);
+  text-align: center;
+}
+
+.eyebrow {
+  color: var(--mint);
+  font: 10px Consolas, monospace;
+  letter-spacing: .12em;
+}
+
+.menu-card h1 {
+  margin: 14px 0 8px;
+  font-size: clamp(28px, 7vw, 42px);
+  letter-spacing: -.05em;
+}
+
+.menu-card > p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+}
+
+.menu-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.menu-button {
+  min-height: 54px;
+  font-size: 15px;
+}
+
+.menu-button span {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: .75;
+}
+
+.secondary-button {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid rgba(120, 213, 170, .42);
+  border-radius: 6px;
+  color: var(--mint);
+  background: rgba(120, 213, 170, .08);
+  cursor: pointer;
+}
+
+.secondary-button:hover { background: rgba(120, 213, 170, .16); }
+
+.menu-rules-button { justify-self: center; margin-top: 2px; }
+
+.online-description, .online-status {
+  color: #bac6c7;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.online-form { display: grid; gap: 10px; margin-top: 18px; }
+.online-form label { color: var(--text); font-size: 12px; font-weight: 700; }
+
+.online-form input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(224, 238, 233, .2);
+  border-radius: 6px;
+  outline: none;
+  color: var(--text);
+  background: rgba(5, 15, 16, .5);
+}
+
+.online-form input:focus { border-color: var(--lime); }
+.online-form button[hidden] { display: none; }
+.online-status { min-height: 20px; margin: 12px 0 0; }
+
+.connection-log {
+  max-height: 55vh;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  overflow: auto;
+  padding-left: 27px;
+  color: #d3ded7;
+  font: 11px/1.45 Consolas, monospace;
+}
+
+.connection-log li::marker { color: var(--mint); }
 
 .game-shell {
   flex: 1;
@@ -275,7 +383,8 @@ button { font: inherit; }
   font-weight: 800;
 }
 
-.primary-button:hover { background: #dcffa0; }
+.primary-button:hover:not(:disabled) { background: #dcffa0; }
+.primary-button:disabled { opacity: .58; cursor: not-allowed; }
 
 .hint-button {
   padding: 0 11px;
@@ -325,11 +434,12 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 
 @media (max-width: 650px) {
   .app { width: calc(100% - 12px); }
-  .topbar { height: 45px; }
+  .topbar { min-height: 45px; }
   .brand { font-size: 10px; }
   .brand-mark { width: 25px; height: 25px; }
   .text-button { font-size: 10px; }
   .topbar-actions { gap: 8px; }
+  .main-menu { min-height: 72vh; padding: 20px 4px; }
   .game-shell { padding: 5px 0 0; }
   .table-wrap { width: 100%; margin: 0 auto; border-radius: 5px; }
   .timer { top: 9px; left: 9px; padding: 5px 8px; }

@@ -1,15 +1,30 @@
 # Blefe de Mesa
 
-Oitava versão (v0.8) de um jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. A partida acontece localmente contra uma IA, sem servidor ou dependências de execução.
+Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É possível jogar offline contra a IA ou online em partidas 1 contra 1.
 
 ## Como iniciar
 
-Abra `index.html` em um navegador moderno. Não é necessário instalar pacotes ou estar conectado à internet para jogar.
+### Modo offline
+
+Abra `index.html` em um navegador moderno e escolha **Jogar offline vs. IA**. Não é necessário instalar pacotes nem estar conectado à internet para jogar offline.
+
+### Servidor local e modo online
+
+O modo online precisa do servidor de sinalização. Requer Node.js 20 ou superior:
+
+```sh
+npm ci
+npm start
+```
+
+Abra `http://localhost:10000` em dois navegadores ou dispositivos e escolha **Jogar online 1 contra 1**. Informe um nickname; o primeiro jogador aguarda como anfitrião e o próximo é pareado com ele. O anfitrião executa as regras da partida, enquanto as ações e os estados do jogo seguem diretamente entre os navegadores por WebRTC.
+
+Para validar a sintaxe dos arquivos JavaScript, execute `npm run check`.
 
 ## Regras desta versão
 
-- Você e a IA começam com 5 vidas e 7 cartas sorteadas.
-- Um baralho extra de 20 cartas fica na mesa. Uma carta é revelada no centro; os dois jogadores dão um palpite antes da revelação.
+- Cada jogador começa com 5 vidas e 7 cartas sorteadas.
+- Um baralho extra de 20 cartas fica na mesa. Uma carta é revelada no centro; os jogadores dão um palpite antes da revelação.
 - Quem acertar sozinho começa. Se ambos acertarem ou errarem, os dois rolam dados; empate é lançado novamente.
 - Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ver o efeito e clique para jogar; ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
 - O cronômetro e as opções de palpite aparecem dentro da mesa; vida e cartas são mostradas em indicadores circulares compactos.
@@ -34,17 +49,25 @@ Abra `index.html` em um navegador moderno. Não é necessário instalar pacotes 
 
 ## Sobre a IA
 
-A IA usa o histórico das cartas jogadas pelo jogador para estimar probabilidades ao adivinhar. Ao escolher a própria carta, considera os palpites e a vida do jogador, mas também introduz variação aleatória para não repetir sempre a mesma opção.
+A IA do modo offline usa o histórico das cartas jogadas pelo jogador para estimar probabilidades ao adivinhar. Ao escolher a própria carta, considera os palpites e a vida do jogador, mas também introduz variação aleatória para não repetir sempre a mesma opção.
+
+## Modo online e implantação
+
+O servidor Node.js também serve os arquivos do jogo e oferece `GET /health` para verificações de integridade. O matchmaking escolhe aleatoriamente um jogador que esteja aguardando; o servidor encaminha apenas a sinalização WebRTC. Durante as partidas online, os nicknames identificam os dois jogadores, e o cronômetro fica visível para ambos. Para iniciar uma revanche, um jogador solicita e o outro precisa aceitar. As conexões, as mudanças de estado da rede e as ações relevantes aparecem no painel **Logs** do jogo e nos logs do servidor, sem registrar as mensagens SDP/ICE completas.
+
+O WebRTC usa um servidor STUN público. Algumas redes restritivas podem bloquear conexões diretas; nesses casos, será necessário configurar um serviço TURN em `online.js`.
+
+Para publicar o modo online no Render, use o Blueprint definido em `render.yaml` (serviço Docker). O Render define a variável `PORT` automaticamente. A publicação estática no Netlify continua possível para o modo offline, mas não inclui o matchmaking online sem um servidor de sinalização.
 
 ## Ideias para próximas versões
 
 - Mostrar um histórico de jogadas e estatísticas entre partidas.
 - Adicionar níveis de dificuldade e uma IA que se adapte ao estilo do jogador.
-- Permitir partidas locais para dois jogadores e opções de acessibilidade.
+- Adicionar partidas locais para dois jogadores e opções de acessibilidade.
 - Equilibrar os efeitos e permitir configurar as regras antes de iniciar.
 
 ## Versionamento e publicação
 
 O projeto é versionado localmente com Git na branch `main` e está conectado ao repositório [MatheusPortal/blefe](https://github.com/MatheusPortal/blefe). Para publicar novas versões no GitHub, autentique o GitHub neste computador e execute `git push -u origin main`.
 
-O jogo também pode ser hospedado no Netlify como site estático: publique a pasta do projeto, usando a raiz como diretório de publicação. Os arquivos necessários são `index.html`, `style.css` e `game.js`; não há etapa de build. A partida não faz chamadas de rede, mas é preciso estar conectado para acessar novamente a página hospedada.
+O jogo também pode ser hospedado no Netlify como site estático para jogar offline: publique a pasta do projeto, usando a raiz como diretório de publicação. Não há etapa de build. O modo online requer o serviço de sinalização descrito acima.

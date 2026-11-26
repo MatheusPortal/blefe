@@ -16,11 +16,26 @@
       </a>
       <div class="topbar-actions">
         <button class="text-button" id="sound-toggle" type="button" aria-pressed="true">♫ Som ligado</button>
+        <button class="text-button" id="connection-log-button" type="button" hidden>Conexão: offline</button>
+        <button class="text-button" id="leave-game-button" type="button" hidden>Menu</button>
         <button class="text-button" id="rules-button" type="button">Como jogar</button>
       </div>
     </header>
 
-    <section class="game-shell" aria-label="Jogo de cartas">
+    <section class="main-menu" id="main-menu" aria-labelledby="menu-title">
+      <div class="menu-card">
+        <p class="eyebrow">CARTAS · ESTRATÉGIA · BLEFE</p>
+        <h1 id="menu-title">A mesa está pronta.</h1>
+        <p>Escolha como quer jogar.</p>
+        <div class="menu-actions">
+          <button class="primary-button menu-button" id="offline-button" type="button">Jogar offline <span>vs. IA</span></button>
+          <button class="secondary-button menu-button" id="online-button" type="button">Jogar online <span>1 contra 1</span></button>
+          <button class="text-button menu-rules-button" id="menu-rules-button" type="button">Como jogar</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="game-shell" id="game-shell" aria-label="Jogo de cartas" hidden>
       <div class="table-wrap">
         <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
         <div class="timer" id="timer" aria-label="Tempo restante" hidden>
@@ -71,6 +86,36 @@
     </div>
   </dialog>
 
+  <dialog id="online-dialog" aria-labelledby="online-title">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">PARTIDA P2P · 1 CONTRA 1</p>
+        <h2 id="online-title">Encontrar uma sala</h2>
+      </div>
+      <button class="icon-button" id="close-online" type="button" aria-label="Fechar">×</button>
+    </div>
+    <p class="online-description">Você será pareado com outra pessoa. O primeiro a entrar aguarda como anfitrião; a partida conecta diretamente entre os navegadores.</p>
+    <form id="online-form" class="online-form">
+      <label for="nickname-input">Seu nickname</label>
+      <input id="nickname-input" name="nickname" type="text" minlength="2" maxlength="18" autocomplete="nickname" placeholder="Ex.: Matheus" required>
+      <button class="primary-button" id="find-match-button" type="submit">Encontrar partida</button>
+      <button class="secondary-button" id="cancel-match-button" type="button" hidden>Cancelar busca</button>
+    </form>
+    <p class="online-status" id="online-status" role="status" aria-live="polite">A conexão usa o servidor de sinalização do jogo e WebRTC P2P.</p>
+  </dialog>
+
+  <dialog id="connection-dialog" aria-labelledby="connection-title">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">EVENTOS DE REDE</p>
+        <h2 id="connection-title">Log da conexão</h2>
+      </div>
+      <button class="icon-button" id="close-connection-log" type="button" aria-label="Fechar log">×</button>
+    </div>
+    <ol class="connection-log" id="connection-log" aria-live="polite"></ol>
+  </dialog>
+
+  <script src="online.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

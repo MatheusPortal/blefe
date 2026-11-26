@@ -32,6 +32,11 @@
   const timerValue = document.querySelector("#timer-value");
   const rulesDialog = document.querySelector("#rules-dialog");
   const soundToggle = document.querySelector("#sound-toggle");
+  const mainMenu = document.querySelector("#main-menu");
+  const gameShell = document.querySelector("#game-shell");
+  const leaveGameButton = document.querySelector("#leave-game-button");
+  const connectionLogButton = document.querySelector("#connection-log-button");
+  const restartButton = document.querySelector("#restart-button");
   const MOBILE_CANVAS_WIDTH = 780;
   const MOBILE_CANVAS_HEIGHT = 1520;
   let canvasWidth = 1100;
@@ -48,6 +53,85 @@
   let audioContext;
   let soundEnabled = true;
   let hoverCard = -1;
+  let onlineRole = null;
+  let onlineSession = null;
+  let onlineNames = null;
+
+  const isOnlineHost = () => onlineRole === "host";
+  const isOnlineGuest = () => onlineRole === "guest";
+
+  function showGameView() {
+    mainMenu.hidden = true;
+    gameShell.hidden = false;
+    leaveGameButton.hidden = false;
+    restartButton.hidden = Boolean(onlineRole);
+    document.body.classList.toggle("online-mode", Boolean(onlineRole));
+  }
+
+  function showMenuView() {
+    clearGameTimers();
+    if (attributeAnimationFrame) window.cancelAnimationFrame(attributeAnimationFrame);
+    attributeAnimationFrame = null;
+    state = null;
+    onlineRole = null;
+    onlineSession = null;
+    onlineNames = null;
+    mainMenu.hidden = false;
+    gameShell.hidden = true;
+    leaveGameButton.hidden = true;
+    connectionLogButton.hidden = true;
+    document.body.classList.remove("online-mode");
+  }
+
+  function startOfflineGame() {
+    onlineRole = null;
+    onlineSession = null;
+    onlineNames = null;
+    connectionLogButton.hidden = true;
+    showGameView();
+    startGame();
+  }
+
+  function startOnlineHost(session, names) {
+    onlineRole = "host";
+    onlineSession = session;
+    onlineNames = names;
+    showGameView();
+    startGame();
+  }
+
+  function waitForOnlineGame(session, names) {
+    onlineRole = "guest";
+    onlineSession = session;
+    onlineNames = names;
+    state = null;
+    showGameView();
+  }
+
+  function sendOnlineAction(action, type) {
+    if (!onlineSession) return false;
+    return onlineSession.send({ kind: "game-action", action, type });
+  }
+
+  function requestRematch() {
+    if (!onlineRole) {
+      startGame();
+      return;
+    }
+    if (!state || state.phase !== "game-over" || state.rematch.player) return;
+
+    state.rematch.player = true;
+    if (isOnlineGuest() && !sendOnlineAction("rematch")) {
+      state.rematch.player = false;
+      render();
+      return;
+    }
+    if (isOnlineHost() && state.rematch.ai) {
+      startGame();
+      return;
+    }
+    render();
+  }
 
   function shuffle(items) {
     const result = [...items];
@@ -129,7 +213,10 @@
     clearGameTimers();
     hoverCard = -1;
     state = {
-      players: { player: makePlayer("Você"), ai: makePlayer("IA") },
+      players: {
+        player: makePlayer(onlineNames ? onlineNames.local : "Você"),
+        ai: makePlayer(onlineNames ? onlineNames.remote : "IA")
+      },
       extraDeck: createExtraDeck(),
       extraDiscard: [],
       phase: "dealing",
@@ -146,6 +233,7 @@
       eliminated: null,
       hintUsed: false,
       gameOver: false,
+      rematch: { player: false, ai: false },
       dealt: { player: 0, ai: 0 },
       startingPlayer: null,
       aiInitiallyHadJoker: false,
@@ -207,7 +295,7 @@
       type,
       totalCards ? deckCounts[type] / totalCards : 1 / COMMON_CARDS.length
     ]));
-    state.setupGuesses.ai = chooseGuess(probabilities, false, COMMON_CARDS);
+    state.setupGuesses.ai = isOnlineHost() ? null : chooseGuess(probabilities, false, COMMON_CARDS);
     state.setupCard = drawExtraCard();
     state.phase = "setup-guess";
     state.message = "Adivinhe a carta para disputar a iniciativa.";
@@ -220,19 +308,38 @@
     window.clearInterval(clockInterval);
     state.seconds = TURN_SECONDS;
     clockInterval = window.setInterval(() => {
-      if (state.gameOver || !["player-play", "player-guess", "setup-guess"].includes(state.phase)) return;
+      const timedPhases = ["player-play", "player-guess", "setup-guess"];
+      if (onlineRole) timedPhases.push("ai-play", "ai-guess");
+      if (state.gameOver || !timedPhases.includes(state.phase)) return;
       state.seconds -= 1;
       if (state.seconds <= 0) {
         state.seconds = 0;
         window.clearInterval(clockInterval);
         onTimeout();
       }
-      updateTimer();
+      if (isOnlineHost()) render();
+      else updateTimer();
     }, 1000);
   }
 
   function onTimeout() {
-    if (state.phase === "player-play") {
+    if (isOnlineHost() && state.phase === "ai-play") {
+      const hand = state.players.ai.hand;
+      playCard("ai", hand[Math.floor(Math.random() * hand.length)]);
+    } else if (isOnlineHost() && state.phase === "ai-guess") {
+      const choices = CARD_TYPES.filter((type) => type !== state.eliminated);
+      submitGuess("ai", choices[Math.floor(Math.random() * choices.length)]);
+    } else if (isOnlineHost() && state.phase === "setup-guess") {
+      if (!state.setupGuesses.player) {
+        state.setupGuesses.player = COMMON_CARDS[Math.floor(Math.random() * COMMON_CARDS.length)];
+      }
+      if (!state.setupGuesses.ai) {
+        state.setupGuesses.ai = COMMON_CARDS[Math.floor(Math.random() * COMMON_CARDS.length)];
+      }
+      state.phase = "setup-revealing";
+      render();
+      aiTimeout = window.setTimeout(resolveSetupChallenge, 650);
+    } else if (state.phase === "player-play") {
       const hand = state.players.player.hand;
       const type = hand[Math.floor(Math.random() * hand.length)];
       state.log = "Tempo esgotado: carta escolhida automaticamente.";
@@ -249,7 +356,20 @@
   function submitSetupGuess(type) {
     if (state.phase !== "setup-guess") return;
     window.clearInterval(clockInterval);
+    if (isOnlineGuest()) {
+      sendOnlineAction("setup-guess", type);
+      state.phase = "setup-wait";
+      state.message = "Palpite enviado. Aguardando o outro jogador...";
+      render();
+      return;
+    }
     state.setupGuesses.player = type;
+    if (isOnlineHost() && !state.setupGuesses.ai) {
+      state.message = `Aguardando o palpite de ${state.players.ai.name}...`;
+      render();
+      beginTimedPhase();
+      return;
+    }
     state.phase = "setup-revealing";
     state.message = "Palpites na mesa...";
     state.log = "Revelando a carta.";
@@ -320,7 +440,11 @@
     state.setupCard = null;
     state.guesses = {};
     state.lastReveal = null;
-    state.message = playerKey === "player" ? "Sua vez." : "A IA começa.";
+    state.message = playerKey === "player"
+      ? "Sua vez."
+      : isOnlineHost()
+        ? `Aguardando a jogada de ${state.players.ai.name}.`
+        : "A IA começa.";
     state.log = `${state.players[playerKey].name} começa.`;
     if (playerKey === "player") {
       beginTimedPhase();
@@ -348,6 +472,14 @@
     const player = state.players[playerKey];
     const cardIndex = player.hand.indexOf(type);
     if (cardIndex < 0) return;
+    if (isOnlineGuest()) {
+      if (playerKey !== "player" || state.phase !== "player-play") return;
+      sendOnlineAction("play", type);
+      state.phase = "ai-play";
+      state.message = "Jogada enviada. Aguardando a resposta...";
+      render();
+      return;
+    }
 
     window.clearInterval(clockInterval);
     player.hand.splice(cardIndex, 1);
@@ -367,8 +499,14 @@
 
     if (playerKey === "player") {
       state.phase = "ai-guess";
-      state.message = "A IA está escolhendo o palpite.";
+      state.message = isOnlineHost()
+        ? `Aguardando o palpite de ${state.players.ai.name}.`
+        : "A IA está escolhendo o palpite.";
       render();
+      if (isOnlineHost()) {
+        beginTimedPhase();
+        return;
+      }
       aiTimeout = window.setTimeout(aiMakeGuess, 800);
       return;
     }
@@ -442,6 +580,14 @@
   }
 
   function submitGuess(guesserKey, guess) {
+    if (isOnlineGuest()) {
+      if (guesserKey !== "player" || state.phase !== "player-guess") return;
+      sendOnlineAction("guess", guess);
+      state.phase = "ai-guess";
+      state.message = "Palpite enviado. Aguardando o resultado...";
+      render();
+      return;
+    }
     if (!state.pending || !["player-guess", "ai-guess"].includes(state.phase)) return;
     window.clearInterval(clockInterval);
     state.guesses[guesserKey] = guess;
@@ -612,12 +758,26 @@
 
   function useLuck() {
     if (state.phase !== "player-guess" || state.players.player.luck < 1 || state.hintUsed) return;
+    if (isOnlineGuest()) {
+      sendOnlineAction("use-luck");
+      state.phase = "ai-guess";
+      state.message = "Usando sorte...";
+      render();
+      return;
+    }
+    applyLuck("player");
+  }
+
+  function applyLuck(guesserKey) {
+    const guesser = state.players[guesserKey];
+    if (guesser.luck < 1 || state.hintUsed || !state.pending) return;
     const wrongOptions = CARD_TYPES.filter((type) => type !== state.pending.type && type !== state.eliminated);
     if (wrongOptions.length === 0) return;
     state.eliminated = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
     state.hintUsed = true;
-    state.players.player.luck -= 1;
+    guesser.luck -= 1;
     state.log = `Sorte: não é ${CARDS[state.eliminated].name}.`;
+    state.message = state.log;
     render();
   }
 
@@ -638,7 +798,14 @@
   function startAiTurn() {
     if (state.gameOver) return;
     if (state.players.ai.hand.length === 0) {
-      endGame("ai", "IA sem cartas");
+      endGame("ai", `${state.players.ai.name} sem cartas`);
+      render();
+      return;
+    }
+    if (isOnlineHost()) {
+      state.phase = "ai-play";
+      state.message = `Aguardando a jogada de ${state.players.ai.name}.`;
+      beginTimedPhase();
       render();
       return;
     }
@@ -679,24 +846,211 @@
   }
 
   function render() {
+    if (!state) return;
     drawTable();
     updateTimer();
     const showTableResult = state.phase === "game-over";
     const showTableNotice = ["result", "setup-result"].includes(state.phase)
-      || (state.phase === "dice-roll" && state.diceFrame >= 8);
+      || (state.phase === "dice-roll" && state.diceFrame >= 8)
+      || (onlineRole && ["ai-play", "ai-guess", "setup-wait"].includes(state.phase));
     tableOverlay.hidden = !showTableResult;
     tableResult.textContent = showTableResult ? state.message : "";
     tableNotice.hidden = !showTableNotice;
     tableNotice.textContent = showTableNotice ? state.message : "";
-    tableRestartButton.hidden = state.phase !== "game-over";
+    tableRestartButton.hidden = !showTableResult;
+    tableRestartButton.disabled = Boolean(onlineRole && state.rematch.player);
+    tableRestartButton.textContent = !onlineRole
+      ? "Jogar novamente"
+      : state.rematch.player
+        ? state.rematch.ai ? "Preparando revanche..." : "Aguardando aceitação..."
+        : state.rematch.ai ? "Aceitar revanche" : "Pedir revanche";
     tableFooter.hidden = state.phase === "game-over";
-    actionArea.hidden = !["setup-guess", "player-guess"].includes(state.phase);
+    restartButton.hidden = Boolean(onlineRole);
+    actionArea.hidden = !(state.phase === "player-guess"
+      || (state.phase === "setup-guess" && (!isOnlineHost() || !state.setupGuesses.player)));
     renderActions();
     canvas.setAttribute("aria-label", getCanvasDescription());
+    if (isOnlineHost() && onlineSession && state.phase !== "dealing") {
+      onlineSession.send({ kind: "game-state", snapshot: createOnlineSnapshot() });
+    }
+  }
+
+  function createOnlineSnapshot() {
+    const snapshot = JSON.parse(JSON.stringify(state));
+    const remotePlayer = snapshot.players.ai;
+    const privateHostHandSize = snapshot.players.player.hand.length;
+    snapshot.players = {
+      player: remotePlayer,
+      ai: {
+        ...snapshot.players.player,
+        hand: Array(privateHostHandSize).fill(null),
+        extraCardsHeld: {}
+      }
+    };
+    snapshot.players.ai.extraCardsHeld = {};
+    snapshot.rematch = { player: state.rematch.ai, ai: state.rematch.player };
+    snapshot.extraDeck = Array(snapshot.extraDeck.length).fill(null);
+    snapshot.extraDiscard = [];
+    snapshot.playerPlayHistory = {};
+    snapshot.playerGuessHistory = {};
+    snapshot.aiPlayHistory = {};
+    snapshot.aiInitiallyHadJoker = false;
+    snapshot.attributeAnimations = [];
+    snapshot.dealt = { player: state.dealt.ai, ai: state.dealt.player };
+    snapshot.dice = { player: state.dice.ai, ai: state.dice.player };
+    snapshot.setupGuesses = { player: state.setupGuesses.ai, ai: state.setupGuesses.player };
+    snapshot.guesses = {
+      player: state.guesses.ai || null,
+      ai: state.guesses.player || null
+    };
+    if (!["setup-revealing", "setup-result", "dice-roll"].includes(state.phase)) {
+      snapshot.setupGuesses = { player: null, ai: null };
+    }
+    if (!["setup-result", "dice-roll"].includes(state.phase)) snapshot.setupCard = null;
+    if (snapshot.pending) {
+      snapshot.pending.owner = snapshot.pending.owner === "player" ? "ai" : "player";
+      if (state.pending.owner === "player" && !["result", "game-over"].includes(state.phase)) {
+        snapshot.pending.type = null;
+      }
+    }
+    if (snapshot.lastReveal) {
+      snapshot.lastReveal.owner = snapshot.lastReveal.owner === "player" ? "ai" : "player";
+    }
+    if (snapshot.winner) {
+      snapshot.winner = snapshot.winner === "player" ? "ai" : "player";
+      snapshot.message = snapshot.winner === "player"
+        ? `Vitória · ${state.players.ai.name} venceu`
+        : `Derrota · ${state.players.player.name} venceu`;
+    }
+    if (snapshot.startingPlayer) {
+      snapshot.startingPlayer = snapshot.startingPlayer === "player" ? "ai" : "player";
+    }
+    const phaseMap = {
+      "player-play": "ai-play",
+      "ai-play": "player-play",
+      "player-guess": "ai-guess",
+      "ai-guess": "player-guess"
+    };
+    snapshot.phase = phaseMap[state.phase] || state.phase;
+    if (snapshot.phase === "player-play") snapshot.message = "Sua vez.";
+    else if (snapshot.phase === "player-guess") snapshot.message = "Sua vez de adivinhar.";
+    else if (snapshot.phase === "ai-play") snapshot.message = `Aguardando a jogada de ${snapshot.players.ai.name}.`;
+    else if (snapshot.phase === "ai-guess") snapshot.message = `Aguardando o palpite de ${snapshot.players.ai.name}.`;
+    return snapshot;
+  }
+
+  function receiveOnlineAction(message) {
+    if (!isOnlineHost() || !state || !message) return;
+    if (message.action === "rematch" && state.phase === "game-over") {
+      state.rematch.ai = true;
+      if (state.rematch.player) startGame();
+      else render();
+      return;
+    }
+    if (state.gameOver) return;
+    const type = message.type;
+    if (message.action === "setup-guess" && COMMON_CARDS.includes(type) && state.phase === "setup-guess") {
+      if (state.setupGuesses.ai) return;
+      state.setupGuesses.ai = type;
+      if (state.setupGuesses.player) {
+        state.phase = "setup-revealing";
+        state.message = "Palpites na mesa...";
+        render();
+        window.clearInterval(clockInterval);
+        aiTimeout = window.setTimeout(resolveSetupChallenge, 650);
+      } else {
+        render();
+      }
+      return;
+    }
+    if (message.action === "play" && CARD_TYPES.includes(type) && state.phase === "ai-play") {
+      playCard("ai", type);
+      return;
+    }
+    if (message.action === "guess" && CARD_TYPES.includes(type) && state.phase === "ai-guess" && type !== state.eliminated) {
+      submitGuess("ai", type);
+      return;
+    }
+    if (message.action === "use-luck" && state.phase === "ai-guess") {
+      applyLuck("ai");
+    }
+  }
+
+  function applyOnlineSnapshot(snapshot) {
+    if (!isOnlineGuest() || !isValidOnlineSnapshot(snapshot)) return false;
+    const previousRound = state && state.phase !== "game-over" ? state.round : null;
+    const previousAttributes = state ? {
+      player: getPlayerAttributes(state.players.player),
+      ai: getPlayerAttributes(state.players.ai)
+    } : null;
+    state = snapshot;
+    state.attributeAnimations = previousAttributes && previousRound === snapshot.round
+      ? createAttributeAnimations(previousAttributes)
+      : [];
+    animateAttributeChanges();
+    render();
+    return true;
+  }
+
+  function isValidOnlineSnapshot(snapshot) {
+    const phases = [
+      "setup-guess", "setup-revealing", "setup-result", "dice-roll",
+      "player-play", "ai-play", "player-guess", "ai-guess",
+      "revealing", "result", "game-over"
+    ];
+    const validCard = (type) => type === null || CARD_TYPES.includes(type);
+    const validPlayer = (player) => (
+      player
+      && typeof player.name === "string"
+      && player.name.length <= 18
+      && Number.isInteger(player.hp)
+      && player.hp >= 0
+      && player.hp <= 5
+      && Number.isInteger(player.luck)
+      && player.luck >= 0
+      && player.luck <= 40
+      && Number.isInteger(player.shields)
+      && player.shields >= 0
+      && player.shields <= 40
+      && Array.isArray(player.hand)
+      && player.hand.length <= 40
+      && player.hand.every(validCard)
+    );
+    const validGuessSet = (guesses) => (
+      guesses
+      && validCard(guesses.player === undefined ? null : guesses.player)
+      && validCard(guesses.ai === undefined ? null : guesses.ai)
+    );
+    if (!snapshot || typeof snapshot !== "object" || !phases.includes(snapshot.phase)) return false;
+    if (!snapshot.players || !validPlayer(snapshot.players.player) || !validPlayer(snapshot.players.ai)) return false;
+    if (!snapshot.rematch || typeof snapshot.rematch.player !== "boolean" || typeof snapshot.rematch.ai !== "boolean") return false;
+    if (!Number.isInteger(snapshot.round) || snapshot.round < 1 || snapshot.round > 1000) return false;
+    if (!Number.isInteger(snapshot.seconds) || snapshot.seconds < 0 || snapshot.seconds > TURN_SECONDS) return false;
+    if (typeof snapshot.message !== "string" || snapshot.message.length > 256) return false;
+    if (!Array.isArray(snapshot.extraDeck) || snapshot.extraDeck.length > EXTRA_DECK_SIZE) return false;
+    if (!Array.isArray(snapshot.extraDiscard) || snapshot.extraDiscard.length > EXTRA_DECK_SIZE) return false;
+    if (!validCard(snapshot.setupCard) || !validCard(snapshot.eliminated)) return false;
+    if (!validGuessSet(snapshot.guesses) || !validGuessSet(snapshot.setupGuesses)) return false;
+    if (snapshot.pending !== null && (
+      !snapshot.pending
+      || !["player", "ai"].includes(snapshot.pending.owner)
+      || !validCard(snapshot.pending.type)
+    )) return false;
+    if (snapshot.lastReveal && (
+      !validCard(snapshot.lastReveal.actualType)
+      || (snapshot.lastReveal.guess !== undefined && !validCard(snapshot.lastReveal.guess))
+      || (snapshot.lastReveal.owner && !["player", "ai"].includes(snapshot.lastReveal.owner))
+      || (snapshot.lastReveal.summary && snapshot.lastReveal.summary.length > 256)
+    )) return false;
+    if (!snapshot.dice || ![snapshot.dice.player, snapshot.dice.ai].every((value) => Number.isInteger(value) && value >= 1 && value <= 6)) return false;
+    if (!snapshot.dealt || ![snapshot.dealt.player, snapshot.dealt.ai].every((value) => Number.isInteger(value) && value >= 0 && value <= 7)) return false;
+    return true;
   }
 
   function getCanvasDescription() {
-    return `Você: ${state.players.player.hand.length} cartas, ${state.players.player.hp} vidas. IA: ${state.players.ai.hand.length} cartas, ${state.players.ai.hp} vidas. ${state.message}`;
+    const playerName = onlineRole ? state.players.player.name : "Você";
+    const opponentName = onlineRole ? state.players.ai.name : "IA";
+    return `${playerName}: ${state.players.player.hand.length} cartas, ${state.players.player.hp} vidas. ${opponentName}: ${state.players.ai.hand.length} cartas, ${state.players.ai.hp} vidas. ${state.message}`;
   }
 
   function renderActions() {
@@ -750,7 +1104,9 @@
   function updateTimer() {
     timerValue.textContent = String(state.seconds);
     timer.classList.toggle("is-low", state.seconds <= 10);
-    timer.hidden = !["player-play", "player-guess", "setup-guess"].includes(state.phase);
+    const timedPhases = ["player-play", "player-guess", "setup-guess"];
+    if (onlineRole) timedPhases.push("ai-play", "ai-guess", "setup-wait");
+    timer.hidden = !timedPhases.includes(state.phase);
   }
 
   function drawTable() {
@@ -793,8 +1149,8 @@
     ctx.ellipse(width / 2, height / 2 + 5, 466, 239, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    drawPlayerPanel(ctx, 1012, 78, state.players.ai, "IA", false);
-    drawPlayerPanel(ctx, 1012, 568, state.players.player, "VOCÊ", true);
+    drawPlayerPanel(ctx, 1012, 78, state.players.ai, onlineRole ? state.players.ai.name : "IA", false);
+    drawPlayerPanel(ctx, 1012, 568, state.players.player, onlineRole ? state.players.player.name : "VOCÊ", true);
     drawExtraDeck(ctx);
     drawAiHand(ctx);
     drawCenter(ctx, width / 2, 326);
@@ -810,7 +1166,10 @@
       : state.phase === "player-play" ? "SUA VEZ"
         : state.phase === "player-guess" ? "SEU PALPITE"
           : ["result", "game-over"].includes(state.phase) ? "REVELADA"
-            : state.phase === "dealing" ? "EMBARALHANDO" : "A IA PENSA";
+            : state.phase === "dealing" ? "EMBARALHANDO"
+              : onlineRole && ["ai-play", "ai-guess"].includes(state.phase)
+                ? state.phase === "ai-play" ? "AGUARDANDO JOGADA" : "AGUARDANDO PALPITE"
+                : "A IA PENSA";
     ctx.fillText(phaseText, width / 2, 250);
 
     if (state.phase === "dice-roll") drawDice(ctx);
@@ -857,8 +1216,8 @@
     ctx.ellipse(width / 2, height / 2, width * .46, height * .46, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    drawMobilePlayerPanel(ctx, 690, 76, state.players.ai, "IA");
-    drawMobilePlayerPanel(ctx, 690, 1410, state.players.player, "VOCÊ");
+    drawMobilePlayerPanel(ctx, 690, 76, state.players.ai, onlineRole ? state.players.ai.name : "IA", false);
+    drawMobilePlayerPanel(ctx, 690, 1410, state.players.player, onlineRole ? state.players.player.name : "VOCÊ", true);
     drawExtraDeck(ctx);
     drawAiHand(ctx);
     drawCenter(ctx, width / 2, 650);
@@ -874,14 +1233,17 @@
         : state.phase === "player-play" ? "SUA VEZ"
           : state.phase === "player-guess" ? "SEU PALPITE"
             : ["result", "game-over"].includes(state.phase) ? "REVELADA"
-              : state.phase === "dealing" ? "DISTRIBUINDO" : "IA PENSA";
+              : state.phase === "dealing" ? "DISTRIBUINDO"
+                : onlineRole && ["ai-play", "ai-guess"].includes(state.phase)
+                  ? state.phase === "ai-play" ? "AGUARDANDO JOGADA" : "AGUARDANDO PALPITE"
+                  : "IA PENSA";
     ctx.fillText(phaseText, width / 2, 480);
 
     if (state.phase === "dice-roll") drawDice(ctx);
   }
 
-  function drawMobilePlayerPanel(ctx, x, y, player, label) {
-    drawPlayerBadge(ctx, x, y, player, label, label === "VOCÊ", true);
+  function drawMobilePlayerPanel(ctx, x, y, player, label, isPlayer) {
+    drawPlayerBadge(ctx, x, y, player, label, isPlayer, true);
   }
 
   function drawPlayerPanel(ctx, x, y, player, label, isPlayer) {
@@ -916,7 +1278,7 @@
     ctx.textAlign = "center";
     ctx.fillStyle = isPlayer ? "#c9ef74" : "#b5d5c7";
     ctx.font = `${mobile ? 15 : 9}px Consolas, monospace`;
-    ctx.fillText(label, x, y - radius - (mobile ? 8 : 7));
+    ctx.fillText(label, x, y - radius - (mobile ? 8 : 7), mobile ? 140 : 160);
     ctx.fillStyle = "#e5eddf";
     ctx.font = `bold ${mobile ? 25 : 19}px 'Segoe UI', sans-serif`;
     ctx.fillText(String(player.hand.length), x, y + (mobile ? 7 : 6));
@@ -948,7 +1310,11 @@
       if (progress < 0 || progress >= 1) return;
       const position = positions[animation.playerKey];
       const alpha = 1 - progress;
-      const label = `${animation.playerKey === "player" ? "VOCÊ" : "IA"} · ${animation.text}`;
+      const animationPlayer = state.players[animation.playerKey];
+      const playerLabel = onlineRole
+        ? animationPlayer.name
+        : animation.playerKey === "player" ? "VOCÊ" : "IA";
+      const label = `${playerLabel} · ${animation.text}`;
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = animation.color;
@@ -1322,15 +1688,15 @@
   }
 
   function handleCanvasPointerMove(event) {
-    const nextHover = state.phase === "player-play" ? getCardAtPointer(event) : -1;
+    const nextHover = state?.phase === "player-play" ? getCardAtPointer(event) : -1;
     if (hoverCard === nextHover) return;
     hoverCard = nextHover;
     canvas.style.cursor = nextHover >= 0 ? "pointer" : "default";
-    if (state.phase === "player-play") drawTable();
+    if (state?.phase === "player-play") drawTable();
   }
 
   function handleCanvasClick(event) {
-    if (state.phase !== "player-play") return;
+    if (state?.phase !== "player-play") return;
     const cardIndex = getCardAtPointer(event);
     if (cardIndex < 0) return;
     playCard("player", state.players.player.hand[cardIndex]);
@@ -1345,11 +1711,11 @@
   canvas.addEventListener("pointerleave", () => {
     hoverCard = -1;
     canvas.style.cursor = "default";
-    if (state.phase === "player-play") drawTable();
+    if (state?.phase === "player-play") drawTable();
   });
   canvas.addEventListener("click", handleCanvasClick);
   canvas.addEventListener("keydown", (event) => {
-    if (!["player-play", "dealing"].includes(state.phase) || !/^[1-9]$/.test(event.key)) return;
+    if (!state || !["player-play", "dealing"].includes(state.phase) || !/^[1-9]$/.test(event.key)) return;
     const cardIndex = Number(event.key) - 1;
     const card = state.players.player.hand[cardIndex];
     if (!card || state.phase !== "player-play") return;
@@ -1357,7 +1723,7 @@
   });
 
   document.querySelector("#restart-button").addEventListener("click", startGame);
-  tableRestartButton.addEventListener("click", startGame);
+  tableRestartButton.addEventListener("click", requestRematch);
   document.querySelector("#rules-button").addEventListener("click", () => rulesDialog.showModal());
   document.querySelector("#close-rules").addEventListener("click", () => rulesDialog.close());
   rulesDialog.addEventListener("click", (event) => {
@@ -1388,6 +1754,13 @@
   window.addEventListener("pointerdown", prepareAudio, { once: true, passive: true });
   window.addEventListener("keydown", prepareAudio, { once: true, capture: true });
   window.addEventListener("resize", resizeCanvasForViewport);
+  window.BlefeGame = Object.freeze({
+    startOffline: startOfflineGame,
+    startOnlineHost,
+    waitForOnlineGame,
+    applyOnlineSnapshot,
+    receiveOnlineAction,
+    leaveToMenu: showMenuView
+  });
   resizeCanvasForViewport();
-  startGame();
 })();
