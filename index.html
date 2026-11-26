@@ -20,6 +20,12 @@
     <section class="game-shell" aria-label="Jogo de cartas">
       <div class="table-wrap">
         <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
+        <div class="table-overlay" id="table-overlay" hidden>
+          <div class="table-feedback">
+            <p id="table-result" role="status" aria-live="polite" aria-atomic="true"></p>
+            <button class="primary-button" id="play-again-button" type="button" hidden>Jogar novamente</button>
+          </div>
+        </div>
       </div>
 
       <section class="play-panel" aria-live="polite">

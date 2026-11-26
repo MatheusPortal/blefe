@@ -15,12 +15,18 @@
     coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Troca o palpite: -1 vida e compra 3 extras." }
   };
   const TURN_SECONDS = 60;
+  const RESULT_PAUSE_MS = 2400;
   const CARD_WIDTH = 106;
   const CARD_HEIGHT = 146;
   const EXTRA_DECK_SIZE = 20;
   const MAX_FACE_DOWN_CARDS = 20;
   const canvas = document.querySelector("#game-canvas");
   const context = canvas.getContext("2d");
+  const tableOverlay = document.querySelector("#table-overlay");
+  const tableResult = document.querySelector("#table-result");
+  const tableRestartButton = document.querySelector("#play-again-button");
+  const playPanel = document.querySelector(".play-panel");
+  const tableFooter = document.querySelector(".table-footer");
   const actionArea = document.querySelector("#action-area");
   const turnLabel = document.querySelector("#turn-label");
   const turnMessage = document.querySelector("#turn-message");
@@ -220,7 +226,7 @@
       state.message = `${name} acertou e começa.`;
       state.log = `${CARDS[state.setupCard].emoji} ${name} abre a partida.`;
       render();
-      aiTimeout = window.setTimeout(() => startTurn(starter), 950);
+      aiTimeout = window.setTimeout(() => startTurn(starter), RESULT_PAUSE_MS);
       return;
     }
 
@@ -258,7 +264,7 @@
       state.message = `${state.dice.player} × ${state.dice.ai} · ${name} começa.`;
       state.log = `${name} venceu no dado.`;
       render();
-      aiTimeout = window.setTimeout(() => startTurn(starter), 950);
+      aiTimeout = window.setTimeout(() => startTurn(starter), RESULT_PAUSE_MS);
     }, 100);
   }
 
@@ -479,6 +485,9 @@
       endGame(owner, `${playedBy.name} venceu · sem cartas`);
     }
     render();
+    if (!state.gameOver) {
+      aiTimeout = window.setTimeout(advanceAfterResult, RESULT_PAUSE_MS);
+    }
   }
 
   function endGame(winnerKey, reason) {
@@ -500,7 +509,7 @@
     render();
   }
 
-  function continueAfterResult() {
+  function advanceAfterResult() {
     if (state.phase !== "result") return;
     if (state.lastReveal.owner === "player") {
       startAiTurn();
@@ -561,6 +570,13 @@
     drawTable();
     updateTimer();
     turnMessage.textContent = state.message;
+    const showTableResult = ["result", "game-over", "setup-result"].includes(state.phase)
+      || (state.phase === "dice-roll" && state.diceFrame >= 8);
+    playPanel.hidden = showTableResult;
+    tableOverlay.hidden = !showTableResult;
+    tableResult.textContent = showTableResult ? state.message : "";
+    tableRestartButton.hidden = state.phase !== "game-over";
+    tableFooter.hidden = state.phase === "game-over";
     renderActions();
     canvas.setAttribute("aria-label", getCanvasDescription());
   }
@@ -594,22 +610,9 @@
       hint.setAttribute("aria-label", `Usar sorte: ${state.players.player.luck}`);
       hint.addEventListener("click", useLuck);
       actionArea.append(hint);
-    } else if (state.phase === "result") {
-      addCaption(`${CARDS[state.lastReveal.actualType].emoji} ${CARDS[state.lastReveal.actualType].name}`);
-      const next = document.createElement("button");
-      next.type = "button";
-      next.className = "primary-button";
-      next.textContent = "Continuar →";
-      next.addEventListener("click", continueAfterResult);
-      actionArea.append(next);
-    } else if (state.phase === "game-over") {
-      addCaption(state.winner === "player" ? "VITÓRIA" : "FIM DE JOGO");
-      const restart = document.createElement("button");
-      restart.type = "button";
-      restart.className = "primary-button";
-      restart.textContent = "Jogar novamente";
-      restart.addEventListener("click", startGame);
-      actionArea.append(restart);
+    } else if (["result", "game-over", "setup-result"].includes(state.phase)
+      || (state.phase === "dice-roll" && state.diceFrame >= 8)) {
+      return;
     } else if (state.phase === "dealing") {
       addCaption("DISTRIBUINDO...");
     } else if (state.phase === "setup-revealing" || state.phase === "revealing") {
@@ -705,9 +708,6 @@
 
     if (state.phase === "dice-roll") drawDice(ctx);
 
-    if (state.lastReveal && ["result", "game-over"].includes(state.phase)) {
-      drawResultToast(ctx, state.lastReveal.summary);
-    }
   }
 
   function drawMobileTable(ctx) {
@@ -747,9 +747,6 @@
     ctx.fillText(phaseText, width / 2, 355);
 
     if (state.phase === "dice-roll") drawDice(ctx);
-    if (state.lastReveal && ["result", "game-over"].includes(state.phase)) {
-      drawResultToast(ctx, state.lastReveal.summary);
-    }
   }
 
   function drawMobilePlayerPanel(ctx, x, y, player, label) {
@@ -1023,23 +1020,6 @@
     ctx.restore();
   }
 
-  function drawResultToast(ctx, summary) {
-    const mobile = isMobileCanvas();
-    const x = mobile ? 165 : 355;
-    const y = mobile ? 600 : 429;
-    const width = mobile ? 450 : 390;
-    const height = mobile ? 52 : 40;
-    ctx.save();
-    ctx.fillStyle = "rgba(11, 24, 23, .86)";
-    roundRect(ctx, x, y, width, height, 8);
-    ctx.fill();
-    ctx.fillStyle = "#ecf2e6";
-    ctx.font = `${mobile ? 17 : 12}px 'Segoe UI', sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(summary, x + width / 2, y + height / 2 + (mobile ? 6 : 4), width - 24);
-    ctx.restore();
-  }
-
   function drawCard(ctx, x, y, type, width, height, angle = 0, highlighted = false) {
     ctx.save();
     ctx.translate(x + width / 2, y + height / 2);
@@ -1186,6 +1166,7 @@
   });
 
   document.querySelector("#restart-button").addEventListener("click", startGame);
+  tableRestartButton.addEventListener("click", startGame);
   document.querySelector("#rules-button").addEventListener("click", () => rulesDialog.showModal());
   document.querySelector("#close-rules").addEventListener("click", () => rulesDialog.close());
   rulesDialog.addEventListener("click", (event) => {

@@ -1,6 +1,6 @@
 # Blefe de Mesa
 
-Quinta versão (v0.5) de um jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. A partida acontece localmente contra uma IA, sem servidor ou dependências de execução.
+Sexta versão (v0.6) de um jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. A partida acontece localmente contra uma IA, sem servidor ou dependências de execução.
 
 ## Como iniciar
 
@@ -26,6 +26,7 @@ Abra `index.html` em um navegador moderno. Não é necessário instalar pacotes 
 - Tartaruga: um palpite certo dá 1 escudo, que bloqueia o próximo evento de dano.
 - Coringa: troca o palpite, causa 1 de dano e dá até 3 cartas extras a quem adivinhou.
 - Cada ação do jogador tem limite de 60 segundos. Se o tempo acabar, a ação é escolhida automaticamente.
+- Os resultados aparecem no centro da mesa; após 2,4 segundos, a próxima jogada começa automaticamente. Ao fim da partida, a mesa mostra o resultado e o botão para jogar novamente.
 - Vence quem ficar sem cartas na mão ou deixar a vida do adversário em zero.
 
 ## Sobre a IA
