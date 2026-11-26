@@ -27,6 +27,7 @@
   const tableRestartButton = document.querySelector("#play-again-button");
   const tableFooter = document.querySelector(".table-footer");
   const actionArea = document.querySelector("#action-area");
+  const tableNotice = document.querySelector("#table-notice");
   const timer = document.querySelector("#timer");
   const timerValue = document.querySelector("#timer-value");
   const rulesDialog = document.querySelector("#rules-dialog");
@@ -566,10 +567,14 @@
   function render() {
     drawTable();
     updateTimer();
-    const showTableResult = ["result", "game-over", "setup-result"].includes(state.phase)
+    const simpleGuessResult = state.phase === "result"
+      && ["Palpite certo", "Palpite errado"].includes(state.lastReveal.summary);
+    const showTableResult = (["result", "game-over", "setup-result"].includes(state.phase) && !simpleGuessResult)
       || (state.phase === "dice-roll" && state.diceFrame >= 8);
     tableOverlay.hidden = !showTableResult;
     tableResult.textContent = showTableResult ? state.message : "";
+    tableNotice.hidden = !simpleGuessResult;
+    tableNotice.textContent = simpleGuessResult ? state.lastReveal.summary : "";
     tableRestartButton.hidden = state.phase !== "game-over";
     tableFooter.hidden = state.phase === "game-over";
     actionArea.hidden = !["setup-guess", "player-guess"].includes(state.phase);
@@ -585,12 +590,14 @@
     actionArea.replaceChildren();
 
     if (state.phase === "setup-guess") {
-      for (const type of COMMON_CARDS) addGuessButton(type, () => submitSetupGuess(type));
+      COMMON_CARDS.forEach((type, index) => {
+        addGuessButton(type, () => submitSetupGuess(type), index, COMMON_CARDS.length);
+      });
     } else if (state.phase === "player-guess") {
-      for (const type of CARD_TYPES) {
-        const button = addGuessButton(type, () => submitGuess("player", type));
+      CARD_TYPES.forEach((type, index) => {
+        const button = addGuessButton(type, () => submitGuess("player", type), index, CARD_TYPES.length);
         button.disabled = type === state.eliminated;
-      }
+      });
       const hint = document.createElement("button");
       hint.type = "button";
       hint.className = "hint-button";
@@ -602,11 +609,26 @@
     }
   }
 
-  function addGuessButton(type, onClick) {
+  function addGuessButton(type, onClick, index, count) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "guess-button";
-    button.textContent = `${CARDS[type].emoji} ${CARDS[type].name}`;
+    button.className = "guess-button guess-card";
+    button.setAttribute("aria-label", `${CARDS[type].name}: ${CARDS[type].effect}`);
+    button.title = CARDS[type].effect;
+    const emoji = document.createElement("span");
+    emoji.className = "guess-card-emoji";
+    emoji.textContent = CARDS[type].emoji;
+    const name = document.createElement("span");
+    name.className = "guess-card-name";
+    name.textContent = CARDS[type].name;
+    button.append(emoji, name);
+    const arcPosition = count > 1 ? (index / (count - 1)) * 2 - 1 : 0;
+    const fanSpread = actionArea.clientWidth * (isMobileCanvas() ? 0.36 : 0.4);
+    button.style.setProperty("--fan-x", `${arcPosition * fanSpread}px`);
+    button.style.setProperty("--fan-y", `${Math.abs(arcPosition) * 14}px`);
+    button.style.setProperty("--fan-angle", `${arcPosition * 24}deg`);
+    button.style.setProperty("--fan-z", String(index + 1));
+    button.style.setProperty("--card-accent", CARDS[type].color);
     button.addEventListener("click", onClick);
     actionArea.append(button);
     return button;
@@ -691,6 +713,29 @@
     felt.addColorStop(1, "#173d35");
     ctx.fillStyle = felt;
     ctx.fillRect(0, 0, width, height);
+
+    ctx.save();
+    ctx.globalAlpha = 0.045;
+    ctx.strokeStyle = "#d4e4b7";
+    ctx.lineWidth = 1;
+    for (let x = 18; x < width; x += 38) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    const glow = ctx.createRadialGradient(width / 2, height / 2, 45, width / 2, height / 2, height * .62);
+    glow.addColorStop(0, "rgba(181, 222, 155, .07)");
+    glow.addColorStop(1, "rgba(0, 0, 0, .1)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.strokeStyle = "rgba(207, 231, 183, .12)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, 10, 10, width - 20, height - 20, 12);
+    ctx.stroke();
 
     ctx.strokeStyle = "rgba(207, 231, 183, .28)";
     ctx.lineWidth = 2;
@@ -865,7 +910,7 @@
         layouts.push({
           index,
           x: startX + index * spacing,
-          y: mobile ? 1280 : 568,
+          y: mobile ? 1050 : 470,
           angle: normalized * 0.1,
           type: hand[index]
         });
@@ -1010,7 +1055,10 @@
     ctx.shadowColor = "rgba(0, 0, 0, .35)";
     ctx.shadowBlur = highlighted ? 21 : 13;
     ctx.shadowOffsetY = highlighted ? 10 : 6;
-    ctx.fillStyle = type ? "#f5f0df" : "#203f38";
+    const face = ctx.createLinearGradient(-width / 2, -height / 2, width / 2, height / 2);
+    face.addColorStop(0, type ? "#fffdf4" : "#294a42");
+    face.addColorStop(1, type ? "#e5ddcb" : "#17352f");
+    ctx.fillStyle = face;
     roundRect(ctx, -width / 2, -height / 2, width, height, 10);
     ctx.fill();
     ctx.shadowColor = "transparent";

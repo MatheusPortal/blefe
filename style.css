@@ -86,8 +86,9 @@ button { font: inherit; }
   margin: 0 auto;
   overflow: hidden;
   border: 1px solid rgba(201, 239, 116, .14);
-  border-radius: 6px;
+  border-radius: 9px;
   background: #193c34;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, .24);
 }
 
 .table-overlay {
@@ -120,6 +121,25 @@ button { font: inherit; }
   font-weight: 700;
   line-height: 1.4;
 }
+
+.table-notice {
+  position: absolute;
+  z-index: 4;
+  bottom: 14px;
+  left: 14px;
+  max-width: min(280px, 70%);
+  padding: 8px 12px;
+  border: 1px solid rgba(224, 238, 233, .12);
+  border-left: 3px solid rgba(201, 239, 116, .65);
+  border-radius: 6px;
+  color: rgba(243, 245, 239, .86);
+  background: rgba(11, 24, 23, .72);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .18);
+  font-size: clamp(10px, 1vw, 13px);
+  pointer-events: none;
+}
+
+.table-notice[hidden] { display: none; }
 
 #play-again-button {
   margin-top: 14px;
@@ -159,18 +179,11 @@ button { font: inherit; }
 .action-area {
   position: absolute;
   z-index: 3;
-  bottom: 8%;
-  left: 34%;
-  display: grid;
-  width: 50%;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
-  padding: 10px;
-  border: 1px solid rgba(224, 238, 233, .14);
-  border-radius: 8px;
-  background: rgba(11, 24, 23, .82);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, .2);
-  backdrop-filter: blur(4px);
+  bottom: 6%;
+  left: 50%;
+  width: min(94%, 920px);
+  height: clamp(110px, 18%, 165px);
+  transform: translateX(-50%);
 }
 
 .action-area[hidden] { display: none; }
@@ -185,19 +198,69 @@ button { font: inherit; }
   transition: background .16s ease, border-color .16s ease;
 }
 
-.guess-button:hover:not(:disabled) {
-  border-color: var(--lime);
-  background: rgba(201, 239, 116, .1);
-}
-
 .guess-button {
   min-width: 0;
-  width: 100%;
-  padding: 0 4px;
-  font-size: 11px;
 }
 
-.guess-button:disabled { opacity: .35; cursor: not-allowed; }
+.guess-card {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  z-index: var(--fan-z);
+  display: flex;
+  width: clamp(62px, 5vw, 78px);
+  height: clamp(82px, 8vw, 102px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 3px 9px;
+  border: 1px solid rgba(51, 60, 49, .24);
+  border-radius: 8px;
+  color: #29352e;
+  background: linear-gradient(155deg, #fffdf5 0%, #eee8d8 68%, #e1dbc9 100%);
+  box-shadow: 0 9px 18px rgba(0, 0, 0, .28), inset 0 0 0 2px rgba(255, 255, 255, .52);
+  transform: translateX(calc(-50% + var(--fan-x))) translateY(var(--fan-y)) rotate(var(--fan-angle));
+  transform-origin: 50% 95%;
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+
+.guess-card::after {
+  position: absolute;
+  right: 20%;
+  bottom: 5px;
+  left: 20%;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--card-accent);
+  content: "";
+}
+
+.guess-card-emoji { font-size: clamp(18px, 2.2vw, 26px); line-height: 1.1; }
+.guess-card-name { font-size: clamp(8px, .75vw, 10px); font-weight: 800; text-align: center; }
+
+.guess-card:hover:not(:disabled), .guess-card:focus-visible {
+  z-index: 20;
+  box-shadow: 0 15px 26px rgba(0, 0, 0, .34), inset 0 0 0 2px rgba(255, 255, 255, .7);
+  filter: brightness(1.05);
+  transform: translateX(calc(-50% + var(--fan-x))) translateY(calc(var(--fan-y) - 13px)) rotate(var(--fan-angle)) scale(1.1);
+}
+
+.guess-card:focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }
+.guess-card:disabled { opacity: .38; cursor: not-allowed; }
+
+.hint-button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-height: 28px;
+  padding: 0 10px;
+  border-color: rgba(120, 213, 170, .42);
+  border-radius: 999px;
+  color: var(--mint);
+  background: rgba(11, 24, 23, .82);
+  font-size: 10px;
+}
 
 .primary-button {
   padding: 0 15px;
@@ -218,7 +281,7 @@ button { font: inherit; }
 }
 
 .hint-button:disabled { opacity: .4; cursor: not-allowed; }
-.hint-button:hover:not(:disabled) { background: rgba(120, 213, 170, .1); }
+.hint-button:hover:not(:disabled) { background: rgba(120, 213, 170, .16); }
 
 .table-footer {
   min-height: 26px;
@@ -262,8 +325,12 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .game-shell { padding: 5px 0 0; }
   .table-wrap { width: 100%; margin: 0 auto; border-radius: 5px; }
   .timer { top: 9px; left: 9px; padding: 5px 8px; }
-  .action-area { bottom: 16%; left: 27%; width: 68%; gap: 4px; padding: 7px; }
-  .guess-button { min-height: 33px; padding: 0 2px; font-size: 9px; }
+  .action-area { bottom: 6%; width: 100%; height: clamp(90px, 18%, 140px); }
+  .guess-card { width: clamp(38px, 10.5vw, 52px); height: clamp(62px, 17.5vw, 78px); gap: 3px; padding: 5px 2px 8px; border-radius: 6px; }
+  .guess-card-emoji { font-size: clamp(16px, 5vw, 22px); }
+  .guess-card-name { font-size: clamp(7px, 2vw, 9px); }
+  .guess-card::after { height: 2px; }
+  .hint-button { min-height: 24px; padding: 0 8px; font-size: 9px; }
   .primary-button, .hint-button { min-height: 33px; font-size: 9px; }
   .table-footer { min-height: 23px; }
   .restart-button { font-size: 14px; }
