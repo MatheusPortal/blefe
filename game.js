@@ -31,15 +31,22 @@
   const timer = document.querySelector("#timer");
   const timerValue = document.querySelector("#timer-value");
   const rulesDialog = document.querySelector("#rules-dialog");
+  const soundToggle = document.querySelector("#sound-toggle");
   const MOBILE_CANVAS_WIDTH = 780;
   const MOBILE_CANVAS_HEIGHT = 1520;
-  const isMobileCanvas = () => canvas.width === MOBILE_CANVAS_WIDTH;
+  let canvasWidth = 1100;
+  let canvasHeight = 660;
+  let canvasPixelRatio = 1;
+  const isMobileCanvas = () => canvasWidth === MOBILE_CANVAS_WIDTH;
 
   let state;
   let clockInterval;
   let aiTimeout;
   let dealInterval;
   let diceInterval;
+  let attributeAnimationFrame;
+  let audioContext;
+  let soundEnabled = true;
   let hoverCard = -1;
 
   function shuffle(items) {
@@ -83,6 +90,41 @@
     window.clearTimeout(aiTimeout);
   }
 
+  function prepareAudio() {
+    if (!soundEnabled || !window.AudioContext) return;
+    if (!audioContext) audioContext = new window.AudioContext();
+    if (audioContext.state === "suspended") audioContext.resume();
+  }
+
+  function playCardSound(type) {
+    if (!soundEnabled || !audioContext || audioContext.state !== "running") return;
+    const frequencies = {
+      leao: 392,
+      coelho: 587,
+      vaca: 330,
+      peixe: 523,
+      tigre: 440,
+      macaco: 659,
+      elefante: 349,
+      tartaruga: 494,
+      coringa: 784
+    };
+    const now = audioContext.currentTime;
+    const oscillator = audioContext.createOscillator();
+    const volume = audioContext.createGain();
+    const frequency = frequencies[type];
+    oscillator.type = type === "coringa" ? "sawtooth" : "triangle";
+    oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.25, now + 0.1);
+    volume.gain.setValueAtTime(0.001, now);
+    volume.gain.exponentialRampToValueAtTime(0.07, now + 0.015);
+    volume.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+    oscillator.connect(volume);
+    volume.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.2);
+  }
+
   function startGame() {
     clearGameTimers();
     hoverCard = -1;
@@ -109,9 +151,14 @@
       aiInitiallyHadJoker: false,
       dice: { player: 1, ai: 1 },
       diceFrame: 0,
+      attributeAnimations: [],
       message: "Embaralhando as cartas...",
       log: "Distribuindo a mão."
     };
+    if (attributeAnimationFrame) {
+      window.cancelAnimationFrame(attributeAnimationFrame);
+      attributeAnimationFrame = null;
+    }
 
     if (Math.random() < 0.02) {
       const recipient = Math.random() < 0.5 ? state.players.player : state.players.ai;
@@ -310,6 +357,7 @@
     }
     if (playerKey === "player") state.playerPlayHistory[type] += 1;
     if (playerKey === "ai") state.aiPlayHistory[type] += 1;
+    playCardSound(type);
 
     state.pending = { owner: playerKey, type };
     state.lastReveal = null;
@@ -414,11 +462,75 @@
     return { blocked: false, lost };
   }
 
+  function getPlayerAttributes(player) {
+    return {
+      hp: player.hp,
+      luck: player.luck,
+      shields: player.shields,
+      cards: player.hand.length
+    };
+  }
+
+  function createAttributeAnimations(previousAttributes) {
+    const changes = [];
+    const attributes = [
+      ["hp", "vida", "vidas", "#ff887d"],
+      ["luck", "sorte", "sorte", "#d9c477"],
+      ["shields", "escudo", "escudos", "#78d5aa"],
+      ["cards", "carta", "cartas", "#c9ef74"]
+    ];
+
+    for (const playerKey of ["player", "ai"]) {
+      const current = getPlayerAttributes(state.players[playerKey]);
+      for (const [attribute, singular, plural, color] of attributes) {
+        const change = current[attribute] - previousAttributes[playerKey][attribute];
+        if (change === 0) continue;
+        const amount = Math.abs(change);
+        const name = amount === 1 ? singular : plural;
+        changes.push({
+          playerKey,
+          text: `${change > 0 ? "+" : "−"}${amount} ${name}`,
+          color,
+          startedAt: performance.now()
+        });
+      }
+    }
+    return changes;
+  }
+
+  function animateAttributeChanges() {
+    if (!state.attributeAnimations.length) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      state.attributeAnimations = [];
+      return;
+    }
+    const finishAt = Math.max(...state.attributeAnimations.map((item) => item.startedAt)) + 1100;
+    const drawFrame = () => {
+      if (!state || !state.attributeAnimations.length) {
+        attributeAnimationFrame = null;
+        return;
+      }
+      if (performance.now() >= finishAt) {
+        state.attributeAnimations = [];
+        attributeAnimationFrame = null;
+        drawTable();
+        return;
+      }
+      drawTable();
+      attributeAnimationFrame = window.requestAnimationFrame(drawFrame);
+    };
+    attributeAnimationFrame = window.requestAnimationFrame(drawFrame);
+  }
+
   function resolveGuess(guesserKey, guess) {
     if (state.gameOver || !state.pending) return;
     const { owner, type: actualType } = state.pending;
     const guesser = state.players[guesserKey];
     const playedBy = state.players[owner];
+    const previousAttributes = {
+      player: getPlayerAttributes(state.players.player),
+      ai: getPlayerAttributes(state.players.ai)
+    };
     const selectedGuess = guess;
     let correct = guess === actualType;
     let summary;
@@ -470,6 +582,8 @@
       summary = correct ? "Palpite certo" : "Palpite errado";
     }
 
+    state.attributeAnimations = createAttributeAnimations(previousAttributes);
+    animateAttributeChanges();
     state.phase = "result";
     state.lastReveal = { owner, actualType, guess: selectedGuess, correct, summary };
     state.pending = null;
@@ -567,14 +681,13 @@
   function render() {
     drawTable();
     updateTimer();
-    const simpleGuessResult = state.phase === "result"
-      && ["Palpite certo", "Palpite errado"].includes(state.lastReveal.summary);
-    const showTableResult = (["result", "game-over", "setup-result"].includes(state.phase) && !simpleGuessResult)
+    const showTableResult = state.phase === "game-over";
+    const showTableNotice = ["result", "setup-result"].includes(state.phase)
       || (state.phase === "dice-roll" && state.diceFrame >= 8);
     tableOverlay.hidden = !showTableResult;
     tableResult.textContent = showTableResult ? state.message : "";
-    tableNotice.hidden = !simpleGuessResult;
-    tableNotice.textContent = simpleGuessResult ? state.lastReveal.summary : "";
+    tableNotice.hidden = !showTableNotice;
+    tableNotice.textContent = showTableNotice ? state.message : "";
     tableRestartButton.hidden = state.phase !== "game-over";
     tableFooter.hidden = state.phase === "game-over";
     actionArea.hidden = !["setup-guess", "player-guess"].includes(state.phase);
@@ -646,8 +759,8 @@
       drawMobileTable(ctx);
       return;
     }
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = canvasWidth;
+    const height = canvasHeight;
     ctx.clearRect(0, 0, width, height);
 
     const felt = ctx.createLinearGradient(0, 0, 0, height);
@@ -687,6 +800,7 @@
     drawCenter(ctx, width / 2, 326);
     drawPlayerHand(ctx);
     drawGuessMarkers(ctx);
+    drawAttributeAnimations(ctx);
 
     ctx.fillStyle = "rgba(233, 243, 224, .66)";
     ctx.font = "10px Consolas, monospace";
@@ -704,8 +818,8 @@
   }
 
   function drawMobileTable(ctx) {
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = canvasWidth;
+    const height = canvasHeight;
     ctx.clearRect(0, 0, width, height);
 
     const felt = ctx.createLinearGradient(0, 0, width, height);
@@ -750,6 +864,7 @@
     drawCenter(ctx, width / 2, 650);
     drawPlayerHand(ctx);
     drawGuessMarkers(ctx);
+    drawAttributeAnimations(ctx);
 
     ctx.fillStyle = "rgba(233, 243, 224, .72)";
     ctx.font = "16px Consolas, monospace";
@@ -819,6 +934,51 @@
     ctx.restore();
   }
 
+  function drawAttributeAnimations(ctx) {
+    if (!state.attributeAnimations.length) return;
+    const mobile = isMobileCanvas();
+    const now = performance.now();
+    const badgeRadius = mobile ? 43 : 35;
+    const positions = mobile
+      ? { ai: { x: 690, y: 76 }, player: { x: 690, y: 1410 } }
+      : { ai: { x: 1012, y: 78 }, player: { x: 1012, y: 568 } };
+
+    state.attributeAnimations.forEach((animation, index) => {
+      const progress = (now - animation.startedAt) / 1100;
+      if (progress < 0 || progress >= 1) return;
+      const position = positions[animation.playerKey];
+      const alpha = 1 - progress;
+      const label = `${animation.playerKey === "player" ? "VOCÊ" : "IA"} · ${animation.text}`;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = animation.color;
+      ctx.lineWidth = mobile ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(position.x, position.y, badgeRadius + 5 + progress * 16, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.font = `bold ${mobile ? 15 : 12}px 'Segoe UI', sans-serif`;
+      const width = ctx.measureText(label).width + 22;
+      const x = mobile ? canvasWidth / 2 : 860;
+      const baseY = mobile
+        ? animation.playerKey === "player" ? 1050 : 440
+        : animation.playerKey === "player" ? 505 : 150;
+      const y = baseY - progress * 42 - index * (mobile ? 24 : 21);
+      ctx.fillStyle = "rgba(10, 23, 21, .94)";
+      roundRect(ctx, x - width / 2, y - (mobile ? 14 : 12), width, mobile ? 28 : 24, 8);
+      ctx.fill();
+      ctx.strokeStyle = animation.color;
+      ctx.lineWidth = 1;
+      roundRect(ctx, x - width / 2, y - (mobile ? 14 : 12), width, mobile ? 28 : 24, 8);
+      ctx.stroke();
+      ctx.fillStyle = animation.color;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, x, y);
+      ctx.restore();
+    });
+  }
+
   function drawExtraDeck(ctx) {
     const mobile = isMobileCanvas();
     const x = mobile ? 32 : 48;
@@ -881,7 +1041,7 @@
     const cardWidth = 94;
     const cardHeight = 132;
     const spacing = visibleCount > 1 ? Math.min(42, 460 / (visibleCount - 1)) : 0;
-    const startX = canvas.width / 2 - ((visibleCount - 1) * spacing) / 2;
+    const startX = canvasWidth / 2 - ((visibleCount - 1) * spacing) / 2;
     for (let index = 0; index < visibleCount; index += 1) {
       const x = startX + index * spacing;
       drawCard(ctx, x - cardWidth / 2, 250 - cardHeight / 2, null, cardWidth, cardHeight);
@@ -890,7 +1050,7 @@
       ctx.fillStyle = "#c9ef74";
       ctx.font = "14px Consolas, monospace";
       ctx.textAlign = "center";
-      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, canvas.width / 2, 330);
+      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, canvasWidth / 2, 330);
     }
   }
 
@@ -918,7 +1078,7 @@
       return layouts;
     }
 
-    const centerX = mobile ? canvas.width / 2 : 550;
+    const centerX = mobile ? canvasWidth / 2 : 550;
     const spacing = visibleCount > 1
       ? Math.min(mobile ? 76 : 76, (mobile ? 440 : 500) / (visibleCount - 1))
       : 0;
@@ -964,8 +1124,8 @@
       ctx.textAlign = "center";
       ctx.fillText(
         "SUA MÃO · CLIQUE PARA JOGAR",
-        canvas.width / 2,
-        mobile ? canvas.height - 18 : 644
+        canvasWidth / 2,
+        mobile ? canvasHeight - 18 : 644
       );
     }
   }
@@ -974,7 +1134,7 @@
     const mobile = isMobileCanvas();
     const width = mobile ? 330 : 224;
     const height = mobile ? 64 : 43;
-    const x = Math.max(width / 2 + 8, Math.min(canvas.width - width / 2 - 8, layout.x));
+    const x = Math.max(width / 2 + 8, Math.min(canvasWidth - width / 2 - 8, layout.x));
     const y = mobile ? 645 : 425;
     ctx.save();
     ctx.fillStyle = "rgba(10, 23, 21, .94)";
@@ -1142,8 +1302,8 @@
 
   function getCardAtPointer(event) {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const scaleX = canvasWidth / rect.width;
+    const scaleY = canvasHeight / rect.height;
     const x = (event.clientX - rect.left) * scaleX;
     const y = (event.clientY - rect.top) * scaleY;
     const layouts = getPlayerCardLayouts();
@@ -1208,12 +1368,25 @@
     const mobile = window.innerWidth <= 650;
     const width = mobile ? MOBILE_CANVAS_WIDTH : 1100;
     const height = mobile ? MOBILE_CANVAS_HEIGHT : 660;
-    if (canvas.width === width && canvas.height === height) return;
-    canvas.width = width;
-    canvas.height = height;
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    if (canvasWidth === width && canvasHeight === height && canvasPixelRatio === pixelRatio) return;
+    canvasWidth = width;
+    canvasHeight = height;
+    canvasPixelRatio = pixelRatio;
+    canvas.width = Math.round(width * pixelRatio);
+    canvas.height = Math.round(height * pixelRatio);
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     if (state) render();
   }
 
+  soundToggle.addEventListener("click", () => {
+    soundEnabled = !soundEnabled;
+    soundToggle.setAttribute("aria-pressed", String(soundEnabled));
+    soundToggle.textContent = soundEnabled ? "♫ Som ligado" : "♫ Som desligado";
+    if (soundEnabled) prepareAudio();
+  });
+  window.addEventListener("pointerdown", prepareAudio, { once: true, passive: true });
+  window.addEventListener("keydown", prepareAudio, { once: true, capture: true });
   window.addEventListener("resize", resizeCanvasForViewport);
   resizeCanvasForViewport();
   startGame();

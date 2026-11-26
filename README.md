@@ -13,8 +13,9 @@ Abra `index.html` em um navegador moderno. Não é necessário instalar pacotes 
 - Quem acertar sozinho começa. Se ambos acertarem ou errarem, os dois rolam dados; empate é lançado novamente.
 - Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ver o efeito e clique para jogar; ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
 - O cronômetro e as opções de palpite aparecem dentro da mesa; vida e cartas são mostradas em indicadores circulares compactos.
-- As opções de palpite formam um leque de cartas. Mensagens simples de palpite certo ou errado aparecem discretamente no canto inferior esquerdo.
-- A mesa se adapta a telas menores e pode ser jogada em celulares.
+- As opções de palpite formam um leque de cartas. Os avisos da rodada aparecem abaixo da mesa, sem cobrir as cartas; apenas o resultado final fica sobre o tabuleiro.
+- O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
+- Cada carta tocada emite um som curto, com controle para ligar ou desligar o áudio. Ganhos e perdas de vida, sorte, escudos e cartas são destacados com animações junto aos indicadores dos jogadores.
 - Existe 2% de chance de um único Coringa entrar na partida, substituindo uma carta inicial.
 - Cartas bônus são compradas do baralho extra. Quando ele acaba, as cartas extras descartadas são embaralhadas novamente. A mão da IA fica escondida e a mesa mostra no máximo 20 cartas viradas para baixo.
 - Cartas jogadas não voltam à mão.
@@ -28,7 +29,7 @@ Abra `index.html` em um navegador moderno. Não é necessário instalar pacotes 
 - Tartaruga: um palpite certo dá 1 escudo, que bloqueia o próximo evento de dano.
 - Coringa: troca o palpite, causa 1 de dano e dá até 3 cartas extras a quem adivinhou.
 - Cada ação do jogador tem limite de 60 segundos. Se o tempo acabar, a ação é escolhida automaticamente.
-- Os resultados aparecem no centro da mesa; após 2,4 segundos, a próxima jogada começa automaticamente. Ao fim da partida, a mesa mostra o resultado e o botão para jogar novamente.
+- Os avisos de resultado aparecem abaixo da mesa; após 2,4 segundos, a próxima jogada começa automaticamente. Ao fim da partida, a mesa mostra o resultado e o botão para jogar novamente.
 - Vence quem ficar sem cartas na mão ou deixar a vida do adversário em zero.
 
 ## Sobre a IA

@@ -14,7 +14,10 @@
         <span class="brand-mark" aria-hidden="true">♠</span>
         <span>BLEFE <b>DE MESA</b></span>
       </a>
-      <button class="text-button" id="rules-button" type="button">Como jogar</button>
+      <div class="topbar-actions">
+        <button class="text-button" id="sound-toggle" type="button" aria-pressed="true">♫ Som ligado</button>
+        <button class="text-button" id="rules-button" type="button">Como jogar</button>
+      </div>
     </header>
 
     <section class="game-shell" aria-label="Jogo de cartas">
@@ -25,7 +28,6 @@
           <strong id="timer-value">60</strong><span>s</span>
         </div>
         <div class="action-area" id="action-area" role="group" aria-label="Opções de palpite" hidden></div>
-        <div class="table-notice" id="table-notice" role="status" aria-live="polite" hidden></div>
         <div class="table-overlay" id="table-overlay" hidden>
           <div class="table-feedback">
             <p id="table-result" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -35,6 +37,7 @@
       </div>
 
       <div class="table-footer">
+        <div class="table-notice" id="table-notice" role="status" aria-live="polite" aria-atomic="true" hidden></div>
         <button class="restart-button" id="restart-button" type="button">↻ <span>Nova partida</span></button>
       </div>
     </section>
