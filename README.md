@@ -1,6 +1,6 @@
 # Blefe de Mesa
 
-Quarta versão (v0.4) de um jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. A partida acontece localmente contra uma IA, sem servidor ou dependências de execução.
+Quinta versão (v0.5) de um jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. A partida acontece localmente contra uma IA, sem servidor ou dependências de execução.
 
 ## Como iniciar
 
@@ -12,6 +12,7 @@ Abra `index.html` em um navegador moderno. Não é necessário instalar pacotes 
 - Um baralho extra de 20 cartas fica na mesa. Uma carta é revelada no centro; os dois jogadores dão um palpite antes da revelação.
 - Quem acertar sozinho começa. Se ambos acertarem ou errarem, os dois rolam dados; empate é lançado novamente.
 - Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ver o efeito e clique para jogar; as cartas da IA ficam viradas para baixo no topo.
+- A mesa se adapta a telas menores e pode ser jogada em celulares.
 - Existe 2% de chance de um único Coringa entrar na partida, substituindo uma carta inicial.
 - Cartas bônus são compradas do baralho extra. Quando ele acaba, as cartas extras descartadas são embaralhadas novamente. A mão da IA fica escondida e a mesa mostra no máximo 20 cartas viradas para baixo.
 - Cartas jogadas não voltam à mão.
@@ -40,4 +41,6 @@ A IA usa o histórico das cartas jogadas pelo jogador para estimar probabilidade
 
 ## Versionamento e publicação
 
-O projeto é versionado localmente com Git na branch `main` e está conectado ao repositório [MatheusPortal/blefe](https://github.com/MatheusPortal/blefe). Para publicar novas versões, autentique o GitHub neste computador e execute `git push -u origin main`.
+O projeto é versionado localmente com Git na branch `main` e está conectado ao repositório [MatheusPortal/blefe](https://github.com/MatheusPortal/blefe). Para publicar novas versões no GitHub, autentique o GitHub neste computador e execute `git push -u origin main`.
+
+O jogo também pode ser hospedado no Netlify como site estático: publique a pasta do projeto, usando a raiz como diretório de publicação. Os arquivos necessários são `index.html`, `style.css` e `game.js`; não há etapa de build. A partida não faz chamadas de rede, mas é preciso estar conectado para acessar novamente a página hospedada.
