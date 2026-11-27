@@ -216,7 +216,7 @@
       const title = document.createElement("strong");
       title.textContent = room.name;
       const count = document.createElement("span");
-      count.textContent = `${room.playerCount}/${room.maxPlayers} jogadores`;
+      count.textContent = `${room.playerCount}/2 · ${room.playerCount === 2 ? "Pronta" : "1 vaga"}`;
       info.append(title, count);
       const join = document.createElement("button");
       join.className = "secondary-button";
@@ -237,8 +237,8 @@
     nicknameInput.disabled = true;
     leaveRoomButton.hidden = false;
     startRoomButton.hidden = !host;
-    startRoomButton.disabled = players.length < 2 || players.length > 4;
-    setStatus(`${room.name} · ${players.map((player) => player.nickname).join(", ")} · ${players.length}/4`);
+    startRoomButton.disabled = players.length !== 2;
+    setStatus(`${room.name} · ${players.map((player) => player.nickname).join(" vs. ")} · ${players.length}/2`);
     logConnection(`Sala ${room.name}: ${players.length} jogador(es).`);
   }
 

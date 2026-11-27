@@ -199,6 +199,54 @@ button { font: inherit; }
 .room-list-item span { color: var(--muted); font-size: 10px; }
 .room-list-empty { margin: 0; color: var(--muted); font-size: 11px; }
 
+#online-dialog { width: min(760px, calc(100% - 24px)); }
+#online-dialog[open] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: 20px 24px;
+}
+#online-dialog .dialog-head,
+#online-dialog .online-description,
+#online-dialog .online-status { grid-column: 1 / -1; }
+#online-dialog .online-description { margin: -6px 0 0; }
+#online-dialog .online-form { align-content: start; margin-top: 0; }
+#online-dialog .room-list-section { margin-top: 0; padding-left: 24px; border-left: 1px solid var(--line); }
+#online-dialog .room-list { max-height: 238px; gap: 9px; padding-right: 3px; }
+#online-dialog .room-list-item {
+  position: relative;
+  min-height: 74px;
+  overflow: hidden;
+  padding: 13px 12px 13px 16px;
+  border-color: rgba(120, 213, 170, .18);
+  background: linear-gradient(135deg, rgba(120, 213, 170, .1), rgba(5, 15, 16, .35));
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+#online-dialog .room-list-item::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--lime);
+  box-shadow: 0 0 14px rgba(201, 239, 116, .45);
+  content: "";
+}
+#online-dialog .room-list-item:hover {
+  border-color: rgba(201, 239, 116, .42);
+  background: linear-gradient(135deg, rgba(120, 213, 170, .16), rgba(5, 15, 16, .46));
+  transform: translateY(-1px);
+}
+#online-dialog .room-list-item span {
+  display: inline-flex;
+  width: max-content;
+  padding: 3px 7px;
+  border: 1px solid rgba(120, 213, 170, .18);
+  border-radius: 999px;
+  color: var(--mint);
+  background: rgba(120, 213, 170, .07);
+}
+#online-dialog .online-form .primary-button,
+#online-dialog .online-form .secondary-button { min-height: 42px; }
+#online-dialog .room-list .secondary-button { min-width: 72px; min-height: 36px; }
+
 .connection-log {
   max-height: 55vh;
   display: flex;
@@ -770,6 +818,11 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .restart-button span { font-size: 9px; }
   .table-footer { width: 100%; }
   dialog { padding: 15px; }
+  #online-dialog[open] { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  #online-dialog .dialog-head,
+  #online-dialog .online-description,
+  #online-dialog .online-status { grid-column: 1; }
+  #online-dialog .room-list-section { padding: 16px 0 0; border-top: 1px solid var(--line); border-left: 0; }
   .rules-content { font-size: 11px; }
   .rules-card-grid { grid-template-columns: minmax(0, 1fr); gap: 7px; }
   .rules-card { padding: 8px; }

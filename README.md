@@ -1,6 +1,6 @@
 # Blefe de Mesa
 
-Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É possível jogar offline contra a IA ou online em salas de 2 a 4 jogadores.
+Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É possível jogar offline contra a IA ou online em salas de 2 jogadores.
 
 ## Como iniciar
 
@@ -53,7 +53,7 @@ A IA do modo offline combina os padrões da partida atual com estatísticas agre
 
 ## Modo online e implantação
 
-O servidor Node.js também oferece `GET /health`, salas públicas de 2 a 4 jogadores e um jogo autoritativo por WebSocket. Cada cliente recebe apenas a própria mão; os demais veem somente a contagem de cartas. Jogadores são eliminados ao chegar a zero vida ou zero cartas, e o último restante vence.
+O servidor Node.js também oferece `GET /health`, salas públicas de 2 jogadores e um jogo autoritativo por WebSocket. Cada cliente recebe apenas a própria mão; o adversário vê somente a contagem de cartas.
 
 Para publicar o modo online no Render, use o Blueprint definido em `render.yaml` (serviço Docker). O Render define a variável `PORT` automaticamente. A publicação estática no Netlify continua possível para o modo offline, mas não inclui o matchmaking online sem um servidor de sinalização.
 

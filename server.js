@@ -123,7 +123,7 @@ function roomSummary(room) {
     name: room.name,
     hostId: room.hostId,
     playerCount: room.players.size,
-    maxPlayers: 4,
+    maxPlayers: 2,
     status: room.status
   };
 }
@@ -134,7 +134,7 @@ function lobbyPlayer(peer) {
 
 function broadcastRooms() {
   const list = [...rooms.values()]
-    .filter((room) => room.status === "lobby" && room.players.size < 4)
+    .filter((room) => room.status === "lobby" && room.players.size < 2)
     .map(roomSummary);
   for (const peer of peers.values()) {
     if (!peer.room) send(peer.socket, { type: "room-list", rooms: list });
@@ -664,7 +664,7 @@ function handleMessage(peer, message) {
     if (typeof message.roomId !== "string") throw new Error("Sala inválida.");
     const room = rooms.get(message.roomId);
     if (!room || room.status !== "lobby") throw new Error("Sala indisponível.");
-    if (room.players.size >= 4) throw new Error("A sala está cheia.");
+    if (room.players.size >= 2) throw new Error("A sala está cheia.");
     if ([...room.players.values()].some((member) => member.nickname.toLowerCase() === nickname.toLowerCase())) {
       throw new Error("Esse nickname já está em uso na sala.");
     }
@@ -681,7 +681,7 @@ function handleMessage(peer, message) {
     const room = peer.room;
     if (!room || room.status !== "lobby") throw new Error("Sala inválida para iniciar.");
     if (room.hostId !== peer.publicId) throw new Error("Somente o host pode iniciar a partida.");
-    if (room.players.size < 2 || room.players.size > 4) throw new Error("São necessários de 2 a 4 jogadores.");
+    if (room.players.size !== 2) throw new Error("São necessários exatamente 2 jogadores.");
     startRoomGame(room);
     return;
   }

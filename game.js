@@ -1972,17 +1972,15 @@
 
       const own = getRoomPlayer();
       const opponents = getRoomOpponents();
-      const positions = mobile
-        ? [{ x: 620, y: 170 }, { x: 150, y: 95 }, { x: 630, y: 1360 }]
-        : [{ x: 890, y: 88 }, { x: 210, y: 88 }, { x: 1012, y: 548 }];
-      opponents.forEach((player, index) => {
-        if (!positions[index]) return;
-        drawPlayerBadge(ctx, positions[index].x, positions[index].y, {
-          ...player,
-          hand: Array(player.handCount || 0).fill(null)
-        }, `${player.nickname}${roomState.turnPlayerId === player.id ? " · JOGA" : ""}`, false, mobile);
-        drawOpponentMiniHand(ctx, player, positions[index].x, positions[index].y + (mobile ? 105 : 86), mobile);
-      });
+      const opponent = opponents[0];
+      if (opponent) {
+        const position = mobile ? { x: 690, y: 76 } : { x: 1012, y: 78 };
+        drawPlayerBadge(ctx, position.x, position.y, {
+          ...opponent,
+          hand: Array(opponent.handCount || 0).fill(null)
+        }, `${opponent.nickname}${roomState.turnPlayerId === opponent.id ? " · JOGA" : ""}`, false, mobile);
+        drawRoomOpponentHand(ctx, opponent);
+      }
       if (own) {
         drawPlayerBadge(ctx, mobile ? 90 : 88, mobile ? 1410 : 568, {
           ...own,
@@ -2064,21 +2062,26 @@
         }
       }
 
-      function drawOpponentMiniHand(ctx, player, x, y, mobile) {
-        const count = Math.min(player.handCount || 0, 8);
-        const cardWidth = mobile ? 30 : 23;
-        const cardHeight = mobile ? 43 : 32;
-        const gap = mobile ? -8 : -7;
-        const totalWidth = cardWidth + Math.max(0, count - 1) * (cardWidth + gap);
-        ctx.save();
-        ctx.fillStyle = "rgba(8, 22, 19, .44)";
-        roundRect(ctx, x - totalWidth / 2 - 8, y - 6, totalWidth + 16, cardHeight + 12, 8);
-        ctx.fill();
-        for (let index = 0; index < count; index += 1) {
-          drawCard(ctx, x - totalWidth / 2 + index * (cardWidth + gap), y, null, cardWidth, cardHeight, (index - (count - 1) / 2) * .035);
-        }
-        ctx.restore();
-      }
+  }
+
+  function drawRoomOpponentHand(ctx, opponent) {
+    const mobile = isMobileCanvas();
+    const count = Math.min(opponent.handCount || 0, MAX_FACE_DOWN_CARDS);
+    const cardWidth = mobile ? 94 : 94;
+    const cardHeight = mobile ? 132 : 132;
+    const spacing = count > 1 ? Math.min(mobile ? 42 : 30, (mobile ? 460 : 520) / (count - 1)) : 0;
+    const startX = canvasWidth / 2 - ((count - 1) * spacing) / 2;
+    for (let index = 0; index < count; index += 1) {
+      const normalized = count > 1 ? (index / (count - 1)) * 2 - 1 : 0;
+      drawCard(
+        ctx,
+        startX + index * spacing - cardWidth / 2,
+        (mobile ? 184 : 22) + Math.abs(normalized) * 9,
+        null,
+        cardWidth,
+        cardHeight
+      );
+    }
   }
 
   function getRoomCardLayouts(hand) {
