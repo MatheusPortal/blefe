@@ -95,10 +95,10 @@ test("resultado online final e atualizações permanecem em um único card", asy
     lastResult: result
   };
   socket.emit({ type: "game-state", state });
-  socket.emit({ type: "game-state", state: { ...state, lastResult: { ...result, transferredCard: "leao" } } });
+  socket.emit({ type: "game-state", state: { ...state, lastResult: { ...result, jokerSwap: true } } });
   const messages = elements.get("#chat-messages").children;
   assert.equal(messages.length, 1);
-  for (const text of ["Coringa", "Bia palpitou Vaca", "ERRO", "+1", "Escudo", "Coringa levou Leão"]) {
+  for (const text of ["Coringa", "Bia palpitou Vaca", "ERRO", "+1", "Escudo", "Coringa trocou uma carta"]) {
     assert.ok(messages[0].innerText.includes(text), text);
   }
 });

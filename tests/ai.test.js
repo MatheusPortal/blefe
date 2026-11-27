@@ -17,7 +17,9 @@ test("avalia efeitos conforme vidas, escudos, baralho e condição de vitória",
   assert.ok(AI.effectValue("leao", owner, target, false, 5) > AI.effectValue("leao", owner, { ...target, shields: 2 }, false, 5));
   assert.ok(AI.effectValue("coelho", owner, target, false, 5) > AI.effectValue("coelho", owner, target, false, 0));
   assert.ok(AI.effectValue("leao", { ...owner, cards: 0 }, target, true, 5) >= 12);
-  assert.ok(AI.effectValue("coringa", { ...owner, cards: 0 }, target, false, 5) < 12);
+  assert.ok(AI.effectValue("coringa", { ...owner, cards: 0 }, target, false, 5) >= 12);
+  assert.equal(AI.effectValue("coringa", owner, { ...target, cards: 1 }, false, 5),
+    AI.effectValue("coringa", owner, target, false, 5));
 });
 
 test("recompensas atualizam somente a ação realizada e preservam estatísticas antigas", () => {

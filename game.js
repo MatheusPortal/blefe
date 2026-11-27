@@ -30,14 +30,13 @@
     elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro — adversário: −1 vida, −2 escudos. Acerto — quem adivinhou: +1 escudo." },
     tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Erro — adversário: +1 carta, −1 escudo; quem jogou: +1 escudo. Acerto — quem adivinhou: +1 vida ou, se cheia, +1 escudo." },
     troca: { name: "Troca", emoji: "🔄", color: "#d9c477", effect: "Erro — quem jogou: pode trocar as mãos por 2 rodadas." },
-    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Erro — quem jogou: +1 vida, +1 escudo, revela 2 cartas e transfere 1 delas para si." }
+    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Erro — quem jogou: +1 vida, +1 escudo; revela até 2 cartas e troca 1 delas por uma carta própria." }
   };
   const TURN_SECONDS = 40;
   const RESULT_PAUSE_SECONDS = 4;
   const OPENING_RESULT_PAUSE_MS = 2400;
-  const CARD_WIDTH = 106;
-  const CARD_HEIGHT = 146;
-  const MAX_FACE_DOWN_CARDS = 20;
+  const CARD_WIDTH = 116;
+  const CARD_HEIGHT = 160;
   const canvas = document.querySelector("#game-canvas");
   const context = canvas.getContext("2d");
   const tableOverlay = document.querySelector("#table-overlay");
@@ -83,6 +82,8 @@
   let audioOutput;
   let soundEnabled = true;
   let hoverCard = -1;
+  let hoverProgress = 0;
+  let hoverAnimationFrame = null;
   let hoverOpponentCard = -1;
   let onlineRole = null;
   let onlineSession = null;
@@ -251,6 +252,8 @@
     onlineRole = "room";
     roomState = snapshot;
     if (previous && previous.phase !== snapshot.phase) {
+      setHoverCard(-1);
+      hoverOpponentCard = -1;
       if (snapshot.phase === "guess" && previous.phase === "play") playCardSound();
       if (snapshot.lastResult && ["result", "joker-reveal", "finished"].includes(snapshot.phase)
         && !previous.lastResult) {
@@ -681,10 +684,14 @@
       render();
       aiTimeout = window.setTimeout(resolveSetupChallenge, 650);
     } else if (state.phase === "player-joker-select" || state.phase === "ai-joker-select") {
-      const selected = state.pendingJokerReveal.selectedIndices;
-      const index = selected[Math.floor(Math.random() * selected.length)];
+      const selection = state.pendingJokerReveal;
+      const choices = selection.stage === "reveal"
+        ? state.players[selection.target].hand.map((_, index) => index).filter((index) => !selection.selectedIndices.includes(index))
+        : selection.stage === "select" ? selection.selectedIndices
+          : state.players[selection.owner].hand.map((_, index) => index);
+      const index = choices[Math.floor(Math.random() * choices.length)];
       if (state.phase === "player-joker-select") submitJokerReveal(index);
-      else if (isOnlineHost()) finishJokerReveal(index);
+      else if (isOnlineHost()) advanceJokerSelection(index);
     } else if (state.phase === "player-play") {
       const hand = state.players.player.hand;
       const type = hand[Math.floor(Math.random() * hand.length)];
@@ -949,7 +956,8 @@
         const healed = Math.min(1, 5 - owner.hp);
         owner.hp += healed;
         owner.shields += 1;
-        return `${owner.name} +${healed} vida, +1 escudo; pode revelar 2 cartas e levar 1`;
+        return `${owner.name} +${healed} vida, +1 escudo${owner.hand.length && guesser.hand.length
+          ? "; revela até 2 cartas e troca 1 por uma carta própria" : ""}`;
       }
       case "troca":
         state.swapAbility = { owner: ownerKey, expiresAfterRound: state.round + 2 };
@@ -1202,13 +1210,10 @@
   }
 
   function recordResolvedGuess(reveal) {
-    state.publicDiscards.push(reveal.actualType);
     if (!onlineRole && state.learningBefore) {
       const owner = state.players[reveal.owner];
       const guesser = state.players[reveal.guesser];
-      const winner = guesser.hp <= 0 || owner.hand.length === 0
-        || (reveal.actualType === "coringa" && !reveal.correct && guesser.hand.length === 0)
-        ? reveal.owner : null;
+      const winner = guesser.hp <= 0 || owner.hand.length === 0 ? reveal.owner : null;
       const after = { player: getPlayerAttributes(state.players.player), ai: getPlayerAttributes(state.players.ai) };
       recordLearningObservation(
         reveal.owner === "player" ? reveal.actualType : null,
@@ -1329,11 +1334,13 @@
     triggerVisualEffect("reveal", { cardType: actualType, correct });
     state.pending = null;
     state.pendingJokerReveal = null;
+    state.publicDiscards.push(actualType);
     state.log = state.message;
 
     const needsJokerReveal = !correct
       && actualType === "coringa"
       && guesser.hand.length > 0
+      && playedBy.hand.length > 0
       && guesser.hp > 0;
     if (!needsJokerReveal) recordResolvedGuess(state.lastReveal);
 
@@ -1356,97 +1363,96 @@
   }
 
   function beginJokerReveal(ownerKey, targetKey) {
-    const target = state.players[targetKey];
-    const selectedIndices = shuffle(Array.from({ length: target.hand.length }, (_, index) => index))
-      .slice(0, Math.min(2, target.hand.length));
     state.pendingJokerReveal = {
       owner: ownerKey,
       target: targetKey,
-      selectedIndices,
-      revealedCards: selectedIndices.map((index) => target.hand[index])
+      stage: "reveal",
+      selectedIndices: [],
+      revealedCards: [],
+      chosenIndex: null
     };
-    state.lastReveal.revealedCards = [...state.pendingJokerReveal.revealedCards];
+    state.phase = ownerKey === "player" ? "player-joker-select" : "ai-joker-select";
     if (ownerKey === "ai" && !isOnlineHost()) {
-      state.phase = "ai-joker-select";
-      const best = selectedIndices.reduce((chosen, index) => (
-        scoreAiCard(target.hand[index], state.players.ai.hand.length + 1)
-          > scoreAiCard(target.hand[chosen], state.players.ai.hand.length + 1) ? index : chosen
+      const target = state.players[targetKey];
+      const indices = shuffle(target.hand.map((_, index) => index)).slice(0, Math.min(2, target.hand.length));
+      indices.forEach(advanceJokerSelection);
+      const hand = state.players.ai.hand;
+      const best = indices.reduce((chosen, index) => (
+        scoreAiCard(target.hand[index], hand.length) > scoreAiCard(target.hand[chosen], hand.length) ? index : chosen
       ));
-      finishJokerReveal(best);
+      advanceJokerSelection(best);
+      const worst = hand.reduce((chosen, card, index) => (
+        scoreAiCard(card, hand.length) < scoreAiCard(hand[chosen], hand.length) ? index : chosen
+      ), 0);
+      advanceJokerSelection(worst);
       return;
     }
-    state.phase = ownerKey === "player" ? "player-joker-select" : "ai-joker-select";
-    state.message = ownerKey === "player"
-      ? "Escolha uma das duas cartas reveladas."
-      : `Aguardando ${state.players.ai.name} escolher uma carta.`;
-    recordSystemEvent(`${state.players[ownerKey].name}: escolha uma das cartas reveladas pelo Coringa.`);
+    state.message = ownerKey === "player" ? "Clique em até duas cartas do adversário para revelá-las."
+      : `Aguardando ${state.players.ai.name} revelar cartas.`;
+    recordSystemEvent(`${state.players[ownerKey].name}: revele cartas do adversário com o Coringa.`);
     beginTimedPhase();
     render();
   }
 
   function submitJokerReveal(index) {
     if (state.phase !== "player-joker-select" || !state.pendingJokerReveal) return;
-    if (!state.pendingJokerReveal.selectedIndices.includes(index)) return;
     if (isOnlineGuest()) {
-      if (!sendOnlineAction("joker-reveal", undefined, index)) return;
-    }
-    if (!isOnlineGuest()) {
-      finishJokerReveal(index);
+      if (!sendOnlineAction("joker-reveal", state.pendingJokerReveal.stage, index)) return;
     } else {
-      state.message = "Carta escolhida. Aguardando confirmação...";
-      render();
+      advanceJokerSelection(index);
     }
   }
 
   function receiveJokerRevealSelection(index) {
-    if (
-      state.phase !== "ai-joker-select"
-      || !state.pendingJokerReveal
-      || state.pendingJokerReveal.owner !== "ai"
-    ) return;
-    const target = state.players[state.pendingJokerReveal.target];
-    const selected = state.pendingJokerReveal.selectedIndices;
-    if (
-      !Number.isInteger(index)
-      || index < 0
-      || index >= target.hand.length
-      || !selected.includes(index)
-    ) return;
-    finishJokerReveal(index);
+    if (state.phase !== "ai-joker-select" || state.pendingJokerReveal?.owner !== "ai") return;
+    advanceJokerSelection(index);
   }
 
-  function finishJokerReveal(index) {
-    if (!state.pendingJokerReveal || !state.lastReveal) return;
+  function advanceJokerSelection(index) {
+    const selection = state.pendingJokerReveal;
+    if (!selection || !state.lastReveal || !Number.isInteger(index)) return;
+    const target = state.players[selection.target];
+    const owner = state.players[selection.owner];
+    if (selection.stage === "reveal") {
+      if (index < 0 || index >= target.hand.length || selection.selectedIndices.includes(index)) return;
+      selection.selectedIndices.push(index);
+      selection.revealedCards.push(target.hand[index]);
+      if (selection.selectedIndices.length >= Math.min(2, target.hand.length)) selection.stage = "select";
+    } else if (selection.stage === "select") {
+      if (!selection.selectedIndices.includes(index)) return;
+      selection.chosenIndex = index;
+      selection.stage = "swap";
+    } else if (selection.stage === "swap") {
+      if (index < 0 || index >= owner.hand.length) return;
+      finishJokerSwap(index);
+      return;
+    } else return;
+    state.message = selection.owner === "player"
+      ? selection.stage === "reveal" ? "Clique em outra carta do adversário."
+        : selection.stage === "select" ? "Escolha uma das cartas reveladas no leque."
+          : "Escolha uma carta da sua mão para trocar."
+      : `Aguardando ${owner.name} completar a troca do Coringa.`;
+    if (selection.owner === "player" || isOnlineHost()) {
+      beginTimedPhase();
+      render();
+    }
+  }
+
+  function finishJokerSwap(index) {
     window.clearInterval(clockInterval);
-    const { owner, target: targetKey, selectedIndices, revealedCards } = state.pendingJokerReveal;
+    const { owner, target: targetKey, chosenIndex } = state.pendingJokerReveal;
     const target = state.players[targetKey];
-    const previousAttributes = {
-      player: getPlayerAttributes(state.players.player),
-      ai: getPlayerAttributes(state.players.ai)
-    };
-    const card = selectedIndices.includes(index) ? target.hand.splice(index, 1)[0] : null;
-    if (card) state.players[owner].hand.push(card);
+    const ownHand = state.players[owner].hand;
+    [ownHand[index], target.hand[chosenIndex]] = [target.hand[chosenIndex], ownHand[index]];
     state.aiHasJoker = state.players.ai.hand.includes("coringa");
-    state.attributeAnimations = createAttributeAnimations(previousAttributes);
-    animateAttributeChanges();
-    state.lastReveal.revealedCards = revealedCards;
-    state.lastReveal.summary = card
-      ? `Coringa revelou ${revealedCards.length} cartas; ${state.players[owner].name} levou ${CARDS[card].name}.`
-      : "O Coringa não encontrou uma carta para levar.";
-    state.lastReveal.attributes.push(
-      ...(card ? [
-        { playerName: target.name, attribute: "cards", value: -1 },
-        { playerName: state.players[owner].name, attribute: "cards", value: 1 }
-      ] : [])
-    );
+    state.lastReveal.summary = `${state.players[owner].name} trocou uma carta com ${target.name} usando o Coringa.`;
+    state.lastReveal.effectSummary = `${state.lastReveal.effectSummary}; trocou uma carta`;
     state.message = state.lastReveal.summary;
     state.log = state.message;
     recordResolvedGuess(state.lastReveal);
     recordSystemEvent(state.lastReveal.summary);
     state.pendingJokerReveal = null;
     state.phase = "result";
-    if (target.hand.length === 0) endGame(owner, `${state.players[owner].name} venceu · adversário sem cartas`);
-    else if (state.players[owner].hand.length === 0) endGame(owner, `${state.players[owner].name} venceu · sem cartas`);
     render();
     if (!state.gameOver) beginRoundPause(advanceAfterResult);
   }
@@ -1691,7 +1697,10 @@
     else if (snapshot.phase === "player-guess") snapshot.message = "Sua vez de adivinhar.";
     else if (snapshot.phase === "ai-play") snapshot.message = `Aguardando a jogada de ${snapshot.players.ai.name}.`;
     else if (snapshot.phase === "ai-guess") snapshot.message = `Aguardando o palpite de ${snapshot.players.ai.name}.`;
-    else if (snapshot.phase === "player-joker-select") snapshot.message = "Clique em até duas cartas da mão do adversário.";
+    else if (snapshot.phase === "player-joker-select") snapshot.message = snapshot.pendingJokerReveal?.stage === "swap"
+      ? "Escolha uma carta da sua mão para trocar."
+      : snapshot.pendingJokerReveal?.stage === "select" ? "Escolha uma carta revelada no leque."
+        : "Clique em até duas cartas da mão do adversário.";
     else if (snapshot.phase === "ai-joker-select") snapshot.message = `Aguardando ${snapshot.players.ai.name} selecionar cartas.`;
     return snapshot;
   }
@@ -1742,6 +1751,7 @@
       && state.phase === "ai-joker-select"
       && state.pendingJokerReveal
       && state.pendingJokerReveal.owner === "ai"
+      && message.type === state.pendingJokerReveal.stage
     ) {
       receiveJokerRevealSelection(message.index);
     }
@@ -1829,12 +1839,17 @@
     if (typeof snapshot.message !== "string" || snapshot.message.length > 256) return false;
     if (!Array.isArray(snapshot.extraDeck) || snapshot.extraDeck.length > DECK_SIZE) return false;
     if (!Array.isArray(snapshot.extraDiscard) || snapshot.extraDiscard.length > DECK_SIZE) return false;
+    if (!Array.isArray(snapshot.publicDiscards) || snapshot.publicDiscards.length > DECK_SIZE
+      || !snapshot.publicDiscards.every((type) => CARD_TYPES.includes(type))) return false;
     if (snapshot.pendingJokerReveal !== null && (
       !snapshot.pendingJokerReveal
       || !["player", "ai"].includes(snapshot.pendingJokerReveal.owner)
       || !["player", "ai"].includes(snapshot.pendingJokerReveal.target)
+      || !["reveal", "select", "swap"].includes(snapshot.pendingJokerReveal.stage)
       || !Array.isArray(snapshot.pendingJokerReveal.selectedIndices)
       || snapshot.pendingJokerReveal.selectedIndices.length > 2
+      || (snapshot.pendingJokerReveal.stage === "swap"
+        && !snapshot.pendingJokerReveal.selectedIndices.includes(snapshot.pendingJokerReveal.chosenIndex))
       || !Array.isArray(snapshot.pendingJokerReveal.revealedCards)
       || snapshot.pendingJokerReveal.revealedCards.length !== snapshot.pendingJokerReveal.selectedIndices.length
       || !snapshot.pendingJokerReveal.revealedCards.every((type) => CARD_TYPES.includes(type))
@@ -1999,17 +2014,6 @@
       return roomState.players.filter((player) => player.id !== roomState.you);
   }
 
-  function getRoomJokerLayouts() {
-    const mobile = isMobileCanvas();
-    return (roomState.jokerSelection?.cards || []).map((card, index) => ({
-      card,
-      x: canvasWidth / 2 + (index === 0 ? -1 : 1) * (mobile ? 95 : 160),
-      y: mobile ? 850 : 326,
-      width: mobile ? 96 : 72,
-      height: mobile ? 138 : 104
-    }));
-  }
-
   function renderRoom() {
       if (!roomState) return;
       drawTable();
@@ -2058,7 +2062,9 @@
           : roomState.phase === "joker-reveal"
             ? "Coringa: escolha cartas da mão do adversário no topo da mesa."
             : roomState.phase === "joker-select"
-              ? "Coringa: escolha uma das cartas reveladas no centro da mesa."
+              ? "Coringa: escolha uma das cartas reveladas no leque adversário."
+            : roomState.phase === "joker-swap"
+              ? "Coringa: escolha uma carta da sua mão para trocar."
           : `${roomState.round}: ${roomState.phase === "guess" ? "adivinhem a carta" : "resultado"}.`);
   }
 
@@ -2113,20 +2119,12 @@
 
       const activeOwner = roomState.players.find((player) => player.id === roomState.turnPlayerId);
       const centerY = mobile ? 650 : 326;
-      const progress = Math.min(1, (performance.now() - roomAnimationStarted) / 420);
-      const eased = 1 - (1 - progress) ** 3;
-      ctx.save();
-      ctx.translate(width / 2, centerY);
-      ctx.scale(.88 + .12 * eased, .88 + .12 * eased);
-      drawCard(ctx, -(mobile ? 62 : 50), -(mobile ? 88 : 72),
-        roomState.phase === "setup-result" || roomState.phase === "dice-roll"
-          ? roomState.lastResult?.card || roomState.activeCard
-          : roomState.activeCard || roomState.tableCard, mobile ? 124 : 100, mobile ? 176 : 144);
-      ctx.restore();
+      drawDiscardPile(ctx, width / 2, centerY, roomState.publicDiscards || [],
+        ["setup-guess", "guess"].includes(roomState.phase));
       ctx.fillStyle = "#dce9d7";
       ctx.textAlign = "center";
       ctx.font = `${mobile ? 15 : 10}px Consolas, monospace`;
-      if (roomState.phase !== "joker-select") ctx.fillText(
+      ctx.fillText(
         roomState.phase === "play"
           ? `${activeOwner?.nickname || "Jogador"} joga`
           : roomState.phase === "setup-guess" ? "PALPITE DE ABERTURA"
@@ -2134,7 +2132,11 @@
           : roomState.phase === "dice-roll" ? "DESEMPATE NOS DADOS"
           : roomState.phase === "guess" ? `Palpite · ${roomState.guessCount || 0} enviado(s)`
           : roomState.phase === "joker-reveal" ? (roomState.jokerSelection?.ownerId === roomState.you
-            ? "CORINGA · ESCOLHA DUAS CARTAS NO TOPO" : "O ADVERSÁRIO ESCOLHE CARTAS")
+            ? "CORINGA · REVELE CARTAS NO TOPO" : "O ADVERSÁRIO ESCOLHE CARTAS")
+          : roomState.phase === "joker-select" ? (roomState.jokerSelection?.ownerId === roomState.you
+            ? "ESCOLHA UMA CARTA REVELADA" : "O ADVERSÁRIO ESCOLHE UMA CARTA")
+          : roomState.phase === "joker-swap" ? (roomState.jokerSelection?.ownerId === roomState.you
+            ? "ESCOLHA SUA CARTA PARA TROCAR" : "O ADVERSÁRIO ESCOLHE UMA CARTA")
             : roomState.phase === "finished" ? "PARTIDA ENCERRADA" : `Rodada ${roomState.round} · resultado`,
         width / 2,
         centerY + (mobile ? 120 : 96)
@@ -2148,7 +2150,6 @@
         drawDie(ctx, mobile ? 270 : 455, mobile ? 650 : 326, roomState.dice[ids[0]]);
         drawDie(ctx, mobile ? 510 : 645, mobile ? 650 : 326, roomState.dice[ids[1]]);
       }
-      drawRoomJokerSelection(ctx);
 
       function drawRoomExtraDeck(ctx) {
         const mobile = isMobileCanvas();
@@ -2180,21 +2181,6 @@
         ctx.font = `bold ${mobile ? 17 : 11}px Consolas, monospace`;
         ctx.fillText(String(count), x + cardWidth / 2, y + cardHeight + 20);
         ctx.restore();
-      }
-
-      function drawRoomJokerSelection(ctx) {
-        if (roomState.phase !== "joker-select" || !roomState.jokerSelection) return;
-        for (const layout of getRoomJokerLayouts()) {
-          drawCard(ctx, layout.x - layout.width / 2, layout.y - layout.height / 2, layout.card, layout.width, layout.height, 0, true);
-        }
-        ctx.fillStyle = "#dce9d7";
-        ctx.font = `${isMobileCanvas() ? 15 : 10}px Consolas, monospace`;
-        ctx.textAlign = "center";
-        ctx.fillText(
-          roomState.jokerSelection.ownerId === roomState.you ? "ESCOLHA UMA CARTA PARA LEVAR" : "O ADVERSÁRIO ESTÁ ESCOLHENDO",
-          canvasWidth / 2,
-          isMobileCanvas() ? 760 : 220
-        );
       }
 
       function drawRoomGuessMarkers(ctx) {
@@ -2234,10 +2220,12 @@
   }
 
   function drawRoomOpponentHand(ctx, opponent) {
-    const selectable = roomState.phase === "joker-reveal" && roomState.jokerSelection?.ownerId === roomState.you;
+    const selection = roomState.jokerSelection?.ownerId === roomState.you
+      && roomState.jokerSelection.targetId === opponent.id ? roomState.jokerSelection : null;
+    const selectable = selection?.stage === "reveal";
     const layouts = getRoomOpponentCardLayouts(opponent);
     for (const layout of layouts) {
-      const selected = roomState.jokerSelection?.selectedIndices?.includes(layout.index);
+      const selected = selection?.selectedIndices.includes(layout.index);
       const hovered = selectable && hoverOpponentCard === layout.index && !selected;
       const y = layout.y - (hovered ? 12 : 0);
       drawCard(
@@ -2251,24 +2239,14 @@
         selected || hovered
       );
     }
-    for (const layout of layouts) {
-      if (roomState.jokerSelection?.selectedIndices?.includes(layout.index)) {
-        drawSelectedCardMarker(ctx, layout.x, layout.y - layout.height / 2);
-      }
-    }
+    drawRevealedOpponentCards(ctx, layouts, selection, selection?.cards || []);
   }
 
   function getRoomOpponentCardAtPointer(event, opponent) {
     const rect = canvas.getBoundingClientRect();
     const x = (event.clientX - rect.left) * (canvasWidth / rect.width);
     const y = (event.clientY - rect.top) * (canvasHeight / rect.height);
-    const layouts = getRoomOpponentCardLayouts(opponent);
-    for (let index = layouts.length - 1; index >= 0; index -= 1) {
-      const layout = layouts[index];
-      const yOffset = hoverOpponentCard === index && !roomState.jokerSelection?.selectedIndices.includes(index) ? 12 : 0;
-      if (Math.abs(x - layout.x) <= layout.width / 2 && Math.abs(y - (layout.y - yOffset)) <= layout.height / 2) return index;
-    }
-    return -1;
+    return opponentCardAtPoint(x, y, getRoomOpponentCardLayouts(opponent), roomState.jokerSelection);
   }
 
   function getRoomCardLayouts(hand) {
@@ -2296,18 +2274,19 @@
         return;
       }
       const layouts = getRoomCardLayouts(hand);
-      const canPlay = roomState.phase === "play" && roomState.turnPlayerId === roomState.you;
+      const canPlay = (roomState.phase === "play" && roomState.turnPlayerId === roomState.you)
+        || (roomState.phase === "joker-swap" && roomState.jokerSelection?.ownerId === roomState.you);
       for (const layout of layouts) {
-        const hovered = canPlay && layout.index === hoverCard;
-        drawCard(ctx, layout.x - CARD_WIDTH / 2, layout.y - CARD_HEIGHT / 2 - (hovered ? 15 : 0),
-          layout.type, CARD_WIDTH, CARD_HEIGHT, layout.angle, hovered);
+        if (canPlay && layout.index === hoverCard) continue;
+        drawHandCard(ctx, layout, 0);
       }
-      if (canPlay && hoverCard >= 0 && layouts[hoverCard]) drawCardTooltip(ctx, layouts[hoverCard]);
+      if (canPlay && hoverCard >= 0 && layouts[hoverCard]) drawHandCard(ctx, layouts[hoverCard], hoverProgress);
       if (hand.length > 0) {
         ctx.fillStyle = "rgba(226,238,221,.76)";
         ctx.font = `${isMobileCanvas() ? 14 : 9}px Consolas, monospace`;
         ctx.textAlign = "center";
-        ctx.fillText(canPlay ? "SUA VEZ · CLIQUE PARA JOGAR" : "SUA MÃO", canvasWidth / 2, isMobileCanvas() ? canvasHeight - 18 : 644);
+        ctx.fillText(roomState.phase === "joker-swap" && canPlay ? "CLIQUE NA CARTA PARA TROCAR"
+          : canPlay ? "SUA VEZ · CLIQUE PARA JOGAR" : "SUA MÃO", canvasWidth / 2, isMobileCanvas() ? canvasHeight - 18 : 644);
       }
     }
 
@@ -2658,41 +2637,78 @@
   }
 
   function drawAiHand(ctx) {
-    const handSize = state.phase === "dealing" ? state.dealt.ai : state.players.ai.hand.length;
     const layouts = getOpponentCardLayouts();
-    const selectable = state.phase === "player-joker-select"
+    const selection = state.phase === "player-joker-select"
       && state.pendingJokerReveal
-      && state.pendingJokerReveal.target === "ai";
+      && state.pendingJokerReveal.target === "ai" ? state.pendingJokerReveal : null;
+    const selectable = selection?.stage === "reveal";
     for (const layout of layouts) {
-      const revealedIndex = selectable
-        ? state.pendingJokerReveal.selectedIndices.indexOf(layout.index)
-        : -1;
-      const selected = revealedIndex >= 0;
+      const selected = selection?.selectedIndices.includes(layout.index);
       const hovered = selectable && layout.index === hoverOpponentCard;
       const y = layout.y - (hovered ? 12 : 0);
       drawCard(
         ctx,
         layout.x - layout.width / 2,
         y - layout.height / 2,
-        selected ? state.pendingJokerReveal.revealedCards[revealedIndex] : null,
+        null,
         layout.width,
         layout.height,
         0,
         selected || hovered
       );
-      if (selected) drawSelectedCardMarker(ctx, layout.x, y - layout.height / 2);
     }
-    if (handSize > MAX_FACE_DOWN_CARDS) {
-      ctx.fillStyle = "#c9ef74";
-      ctx.font = `${isMobileCanvas() ? 14 : 9}px Consolas, monospace`;
-      ctx.textAlign = "center";
-      ctx.fillText(`+${handSize - MAX_FACE_DOWN_CARDS}`, isMobileCanvas() ? canvasWidth / 2 : 550, isMobileCanvas() ? 330 : 170);
+    drawRevealedOpponentCards(ctx, layouts, selection, selection?.revealedCards || []);
+  }
+
+  function getRevealedOpponentLayouts(layouts, selection) {
+    if (!selection) return [];
+    return selection.selectedIndices.map((index, position) => {
+      const original = layouts.find((layout) => layout.index === index);
+      if (!original) return null;
+      return {
+        ...original,
+        x: canvasWidth / 2 + (position - (selection.selectedIndices.length - 1) / 2) * 104,
+        y: (isMobileCanvas() ? 250 : 88) + 70
+      };
+    }).filter(Boolean);
+  }
+
+  function drawRevealedOpponentCards(ctx, layouts, selection, cards) {
+    for (const layout of getRevealedOpponentLayouts(layouts, selection)) {
+      const position = selection.selectedIndices.indexOf(layout.index);
+      const card = cards[position];
+      if (!card) continue;
+      drawCard(ctx, layout.x - layout.width / 2, layout.y - layout.height / 2,
+        card, layout.width, layout.height, 0, true);
+      if (selection.chosenIndex === layout.index) drawSelectedCardMarker(ctx, layout.x, layout.y - layout.height / 2);
     }
+  }
+
+  function opponentCardAtPoint(x, y, layouts, selection) {
+    if (!selection) return -1;
+    if (selection.stage === "select") {
+      const revealed = getRevealedOpponentLayouts(layouts, selection);
+      for (let index = revealed.length - 1; index >= 0; index -= 1) {
+        const layout = revealed[index];
+        if (Math.abs(x - layout.x) <= layout.width / 2 && Math.abs(y - layout.y) <= layout.height / 2) return layout.index;
+      }
+    } else if (selection.stage === "reveal") {
+      for (const layout of getRevealedOpponentLayouts(layouts, selection)) {
+        if (Math.abs(x - layout.x) <= layout.width / 2 && Math.abs(y - layout.y) <= layout.height / 2) return -1;
+      }
+      for (let index = layouts.length - 1; index >= 0; index -= 1) {
+        const layout = layouts[index];
+        if (selection.selectedIndices.includes(layout.index)) continue;
+        const offset = hoverOpponentCard === layout.index ? 12 : 0;
+        if (Math.abs(x - layout.x) <= layout.width / 2 && Math.abs(y - (layout.y - offset)) <= layout.height / 2) return layout.index;
+      }
+    }
+    return -1;
   }
 
   function getOpponentCardLayouts() {
     const handSize = state.phase === "dealing" ? state.dealt.ai : state.players.ai.hand.length;
-    const visibleCount = Math.min(handSize, MAX_FACE_DOWN_CARDS);
+    const visibleCount = handSize;
     const cardWidth = 94;
     const cardHeight = 132;
     const mobile = isMobileCanvas();
@@ -2773,80 +2789,45 @@
   }
 
   function drawPlayerHand(ctx) {
-    const canPlay = state.phase === "player-play";
+    const canPlay = state.phase === "player-play"
+      || (state.phase === "player-joker-select" && state.pendingJokerReveal?.stage === "swap");
     const mobile = isMobileCanvas();
     const compacted = ["player-guess", "setup-guess"].includes(state.phase);
     if (compacted) return;
-    const cardWidth = compacted ? mobile ? 72 : 62 : CARD_WIDTH;
-    const cardHeight = compacted ? mobile ? 98 : 84 : CARD_HEIGHT;
     const layouts = getPlayerCardLayouts();
     for (const layout of layouts) {
-      const hovered = canPlay && layout.index === hoverCard;
-      drawCard(
-        ctx,
-        layout.x - cardWidth / 2,
-        layout.y - cardHeight / 2 - (hovered ? 15 : 0),
-        layout.type,
-        cardWidth,
-        cardHeight,
-        layout.angle,
-        hovered
-      );
+      if (canPlay && layout.index === hoverCard) continue;
+      drawHandCard(ctx, layout, 0);
     }
-    if (canPlay && hoverCard >= 0 && layouts[hoverCard]) drawCardTooltip(ctx, layouts[hoverCard]);
+    if (canPlay && hoverCard >= 0 && layouts[hoverCard]) drawHandCard(ctx, layouts[hoverCard], hoverProgress);
     if (state.players.player.hand.length > 0 && !compacted) {
       ctx.fillStyle = "rgba(226, 238, 221, .76)";
       ctx.font = `${mobile ? 14 : 9}px Consolas, monospace`;
       ctx.textAlign = "center";
       ctx.fillText(
-        "SUA MÃO · CLIQUE PARA JOGAR",
+        state.phase === "player-joker-select" && canPlay ? "CLIQUE NA CARTA PARA TROCAR" : "SUA MÃO · CLIQUE PARA JOGAR",
         canvasWidth / 2,
         mobile ? canvasHeight - 18 : 644
       );
     }
   }
 
-  function drawCardTooltip(ctx, layout) {
-    const mobile = isMobileCanvas();
-    const width = mobile ? 500 : 330;
-    const padding = mobile ? 18 : 14;
-    const fontSize = mobile ? 25 : 14;
-    const lineHeight = mobile ? 32 : 19;
-    const card = CARDS[layout.type];
-    ctx.save();
-    ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
-    const lines = [];
-    for (const paragraph of card.effect.split(/(?=Acerto —)/)) {
-      let line = "";
-      for (const word of paragraph.trim().split(/\s+/)) {
-        const next = line ? `${line} ${word}` : word;
-        if (line && ctx.measureText(next).width > width - padding * 2) {
-          lines.push(line);
-          line = word;
-        } else line = next;
-      }
-      if (line) lines.push(line);
-    }
-    const height = padding * 2 + (mobile ? 30 : 23) + lines.length * lineHeight;
-    const x = Math.max(width / 2 + 8, Math.min(canvasWidth - width / 2 - 8, layout.x));
-    const y = Math.max(12, layout.y - CARD_HEIGHT / 2 - 24 - height);
-    ctx.fillStyle = "rgba(10, 23, 21, .98)";
-    roundRect(ctx, x - width / 2, y, width, height, 7);
-    ctx.fill();
-    ctx.strokeStyle = card.color;
-    ctx.lineWidth = 1;
-    roundRect(ctx, x - width / 2, y, width, height, 7);
-    ctx.stroke();
-    ctx.fillStyle = card.color;
-    ctx.textAlign = "left";
-    ctx.font = `bold ${mobile ? 27 : 16}px 'Segoe UI', sans-serif`;
-    ctx.fillText(`${card.emoji} ${card.name}`, x - width / 2 + padding, y + padding + fontSize);
-    ctx.fillStyle = "#e6ede1";
-    ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
-    lines.forEach((line, index) => {
-      ctx.fillText(line, x - width / 2 + padding, y + padding + (mobile ? 30 : 23) + fontSize + index * lineHeight);
-    });
-    ctx.restore();
+  function handCardGeometry(layout, progress) {
+    const width = CARD_WIDTH + ((isMobileCanvas() ? 320 : 220) - CARD_WIDTH) * progress;
+    const height = CARD_HEIGHT + ((isMobileCanvas() ? 430 : 290) - CARD_HEIGHT) * progress;
+    return {
+      x: Math.max(width / 2 + 4, Math.min(canvasWidth - width / 2 - 4, layout.x)),
+      y: layout.y - (isMobileCanvas() ? 125 : 105) * progress,
+      width,
+      height,
+      angle: layout.angle * (1 - progress)
+    };
+  }
+
+  function drawHandCard(ctx, layout, progress) {
+    const geometry = handCardGeometry(layout, progress);
+    drawCard(ctx, geometry.x - geometry.width / 2, geometry.y - geometry.height / 2,
+      layout.type, geometry.width, geometry.height, geometry.angle, progress > 0, progress > 0.85);
   }
 
   function drawGuessMarkers(ctx) {
@@ -2877,8 +2858,6 @@
 
   function drawCenter(ctx, centerX, centerY) {
     const mobile = isMobileCanvas();
-    const cardWidth = mobile ? 124 : 100;
-    const cardHeight = mobile ? 176 : 144;
     ctx.save();
     ctx.textAlign = "center";
     ctx.fillStyle = "rgba(13, 30, 25, .24)";
@@ -2886,62 +2865,35 @@
     ctx.ellipse(centerX, centerY + 45, 114, 28, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    const setupVisible = ["setup-result", "dice-roll"].includes(state.phase);
-    const normalVisible = state.lastReveal && [
-      "result", "game-over", "player-joker-select", "ai-joker-select"
-    ].includes(state.phase);
-    const visibleCard = setupVisible
-      ? state.setupCard
-      : normalVisible ? state.lastReveal.actualType : null;
-    const revealProgress = state.visualEffect
-      && state.visualEffect.kind === "reveal"
-      && state.visualEffectStartedAt !== null
-      ? Math.min(1, Math.max(0, (performance.now() - state.visualEffectStartedAt) / 1000))
-      : 1;
-    const revealScale = normalVisible ? 0.88 + revealProgress * 0.12 : 1;
-    const drawnWidth = cardWidth * revealScale;
-    const drawnHeight = cardHeight * revealScale;
-    drawCard(
-      ctx,
-      centerX - drawnWidth / 2,
-      centerY - drawnHeight / 2,
-      visibleCard,
-      drawnWidth,
-      drawnHeight,
-      0,
-      normalVisible && revealProgress < 0.8
-    );
+    const openingGuess = ["setup-guess", "setup-revealing", "setup-wait"].includes(state.phase);
+    const hidden = openingGuess || Boolean(state.pending);
+    drawDiscardPile(ctx, centerX, centerY, state.publicDiscards, hidden);
     ctx.fillStyle = "rgba(226, 238, 221, .72)";
     ctx.font = `${mobile ? 14 : 10}px Consolas, monospace`;
-    const openingGuess = ["setup-guess", "setup-revealing"].includes(state.phase);
-    const label = setupVisible
-      ? "CARTA DO SORTEIO"
-      : normalVisible ? CARDS[visibleCard].name.toUpperCase()
-        : openingGuess ? "CARTA DE ABERTURA" : "CARTA JOGADA";
+    const last = state.publicDiscards[state.publicDiscards.length - 1];
+    const label = openingGuess ? "CARTA DE ABERTURA" : hidden ? "CARTA JOGADA"
+      : last ? CARDS[last].name.toUpperCase() : "";
     ctx.fillText(label, centerX, centerY + (mobile ? 113 : 91));
-    if (normalVisible && state.lastReveal.revealedCards && state.lastReveal.revealedCards.length > 0) {
-      const revealWidth = mobile ? 72 : 60;
-      const revealHeight = mobile ? 104 : 86;
-      const gap = mobile ? 84 : 68;
-      state.lastReveal.revealedCards.forEach((card, index) => {
-        const revealX = centerX + (mobile ? 140 : 132) + index * gap;
-        drawCard(
-          ctx,
-          revealX - revealWidth / 2,
-          centerY - revealHeight / 2,
-          card,
-          revealWidth,
-          revealHeight
-        );
-        ctx.fillStyle = "rgba(226, 238, 221, .72)";
-        ctx.font = `${mobile ? 11 : 8}px Consolas, monospace`;
-        ctx.fillText(`REVELADA ${index + 1}`, revealX, centerY + revealHeight / 2 + (mobile ? 16 : 12));
-      });
-    }
     ctx.restore();
   }
 
-  function drawCard(ctx, x, y, type, width, height, angle = 0, highlighted = false) {
+  function drawDiscardPile(ctx, centerX, centerY, cards, hidden) {
+    const width = isMobileCanvas() ? 124 : 100;
+    const height = isMobileCanvas() ? 176 : 144;
+    const visible = cards;
+    visible.forEach((card, index) => {
+      const depth = visible.length - index - 1;
+      drawCard(ctx, centerX - width / 2 - depth * 1.1, centerY - height / 2 + depth,
+        card, width, height, (index % 2 ? 1 : -1) * Math.min(depth * 0.025, 0.12));
+    });
+    if (hidden) {
+      const offsetX = visible.length ? width * 0.95 : 0;
+      const offsetY = visible.length ? -height * 0.65 : 0;
+      drawCard(ctx, centerX - width / 2 + offsetX, centerY - height / 2 + offsetY, null, width, height);
+    }
+  }
+
+  function drawCard(ctx, x, y, type, width, height, angle = 0, highlighted = false, details = false) {
     ctx.save();
     ctx.translate(x + width / 2, y + height / 2);
     ctx.rotate(angle);
@@ -2967,7 +2919,39 @@
     roundRect(ctx, -width / 2 + 4, -height / 2 + 4, width - 8, height - 8, 8);
     ctx.stroke();
 
-    if (type) {
+    if (type && details) {
+      const card = CARDS[type];
+      const fontSize = isMobileCanvas() ? 22 : 13;
+      const lineHeight = fontSize * 1.3;
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#24312b";
+      ctx.font = `${Math.round(width * 0.22)}px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif`;
+      ctx.fillText(card.emoji, 0, -height / 2 + height * 0.26);
+      ctx.fillStyle = "#24312b";
+      ctx.font = `bold ${Math.round(fontSize * 1.25)}px 'Segoe UI', sans-serif`;
+      ctx.fillText(card.name.toUpperCase(), 0, -height / 2 + height * 0.36);
+      ctx.fillStyle = card.color;
+      ctx.fillRect(-width * 0.35, -height / 2 + height * 0.39, width * 0.7, 4);
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#35443d";
+      ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
+      let lineY = -height / 2 + height * 0.48;
+      for (const paragraph of card.effect.split(/(?=Acerto —)/)) {
+        let line = "";
+        for (const word of paragraph.trim().split(/\s+/)) {
+          const next = line ? `${line} ${word}` : word;
+          if (line && ctx.measureText(next).width > width - 28) {
+            ctx.fillText(line, -width / 2 + 14, lineY);
+            lineY += lineHeight;
+            line = word;
+          } else line = next;
+        }
+        if (line) {
+          ctx.fillText(line, -width / 2 + 14, lineY);
+          lineY += lineHeight * 1.25;
+        }
+      }
+    } else if (type) {
       const mobile = isMobileCanvas();
       ctx.textAlign = "center";
       ctx.fillStyle = "#24312b";
@@ -3050,6 +3034,14 @@
       ? getRoomCardLayouts(getRoomPlayer()?.hand || [])
       : getPlayerCardLayouts();
 
+    if (hoverCard >= 0 && layouts[hoverCard] && y < layouts[hoverCard].y + CARD_HEIGHT * 0.3) {
+      const geometry = handCardGeometry(layouts[hoverCard], hoverProgress);
+      const dx = x - geometry.x;
+      const dy = y - geometry.y;
+      const localX = dx * Math.cos(geometry.angle) + dy * Math.sin(geometry.angle);
+      const localY = -dx * Math.sin(geometry.angle) + dy * Math.cos(geometry.angle);
+      if (Math.abs(localX) <= geometry.width / 2 && Math.abs(localY) <= geometry.height / 2) return hoverCard;
+    }
     for (let index = layouts.length - 1; index >= 0; index -= 1) {
       const layout = layouts[index];
       const dx = x - layout.x;
@@ -3072,39 +3064,54 @@
     const rect = canvas.getBoundingClientRect();
     const x = (event.clientX - rect.left) * (canvasWidth / rect.width);
     const y = (event.clientY - rect.top) * (canvasHeight / rect.height);
-    const layouts = getOpponentCardLayouts();
-    for (let index = layouts.length - 1; index >= 0; index -= 1) {
-      const layout = layouts[index];
-      if (!state.pendingJokerReveal.selectedIndices.includes(layout.index)) continue;
-      if (
-        Math.abs(x - layout.x) <= layout.width / 2
-        && Math.abs(y - layout.y) <= layout.height / 2
-      ) return layout.index;
+    return opponentCardAtPoint(x, y, getOpponentCardLayouts(), state.pendingJokerReveal);
+  }
+
+  function setHoverCard(index) {
+    if (hoverCard === index) return;
+    hoverCard = index;
+    hoverProgress = 0;
+    if (hoverAnimationFrame !== null) window.cancelAnimationFrame(hoverAnimationFrame);
+    hoverAnimationFrame = null;
+    if (index < 0) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      hoverProgress = 1;
+      return;
     }
-    return -1;
+    const started = performance.now();
+    const animate = () => {
+      hoverProgress = Math.min(1, (performance.now() - started) / 180);
+      hoverProgress = 1 - (1 - hoverProgress) ** 3;
+      if (state || roomState) drawTable();
+      hoverAnimationFrame = hoverProgress < 1 ? window.requestAnimationFrame(animate) : null;
+    };
+    hoverAnimationFrame = window.requestAnimationFrame(animate);
   }
 
   function handleCanvasPointerMove(event) {
     if (roomState && onlineRole === "room") {
-      const nextHover = roomState.phase === "play" && roomState.turnPlayerId === roomState.you
+      const canChooseOwn = (roomState.phase === "play" && roomState.turnPlayerId === roomState.you)
+        || (roomState.phase === "joker-swap" && roomState.jokerSelection?.ownerId === roomState.you);
+      const nextHover = canChooseOwn
         ? getCardAtPointer(event)
         : -1;
-      const opponent = roomState.phase === "joker-reveal" && roomState.jokerSelection?.ownerId === roomState.you
+      const opponent = ["joker-reveal", "joker-select"].includes(roomState.phase) && roomState.jokerSelection?.ownerId === roomState.you
         ? roomState.players.find((player) => player.id === roomState.jokerSelection.targetId)
         : null;
       const nextOpponentHover = opponent ? getRoomOpponentCardAtPointer(event, opponent) : -1;
       if (hoverCard === nextHover && hoverOpponentCard === nextOpponentHover) return;
-      hoverCard = nextHover;
+      setHoverCard(nextHover);
       hoverOpponentCard = nextOpponentHover;
       canvas.style.cursor = nextHover >= 0 || nextOpponentHover >= 0 ? "pointer" : "default";
       drawTable();
       return;
     }
     const selectingJoker = state?.phase === "player-joker-select";
-    const nextHover = state?.phase === "player-play" ? getCardAtPointer(event) : -1;
-    const nextOpponentHover = selectingJoker ? getOpponentCardAtPointer(event) : -1;
+    const nextHover = state?.phase === "player-play" || (selectingJoker && state.pendingJokerReveal?.stage === "swap")
+      ? getCardAtPointer(event) : -1;
+    const nextOpponentHover = selectingJoker && state.pendingJokerReveal?.stage !== "swap" ? getOpponentCardAtPointer(event) : -1;
     if (hoverCard === nextHover && hoverOpponentCard === nextOpponentHover) return;
-    hoverCard = nextHover;
+    setHoverCard(nextHover);
     hoverOpponentCard = nextOpponentHover;
     canvas.style.cursor = nextHover >= 0 || nextOpponentHover >= 0 ? "pointer" : "default";
     if (state?.phase === "player-play" || selectingJoker) drawTable();
@@ -3121,14 +3128,14 @@
         return;
       }
       if (roomState.phase === "joker-select" && roomState.jokerSelection?.ownerId === roomState.you) {
-        const rect = canvas.getBoundingClientRect();
-        const x = (event.clientX - rect.left) * (canvasWidth / rect.width);
-        const y = (event.clientY - rect.top) * (canvasHeight / rect.height);
-        const index = getRoomJokerLayouts().findIndex((layout) => (
-          Math.abs(x - layout.x) <= layout.width / 2
-          && Math.abs(y - layout.y) <= layout.height / 2
-        ));
+        const opponent = roomState.players.find((player) => player.id === roomState.jokerSelection.targetId);
+        const index = opponent ? getRoomOpponentCardAtPointer(event, opponent) : -1;
         if (index >= 0) roomSession?.sendAction({ action: "joker-pick", index });
+        return;
+      }
+      if (roomState.phase === "joker-swap" && roomState.jokerSelection?.ownerId === roomState.you) {
+        const index = getCardAtPointer(event);
+        if (index >= 0) roomSession?.sendAction({ action: "joker-swap", index });
         return;
       }
       if (roomState.phase !== "play" || roomState.turnPlayerId !== roomState.you) return;
@@ -3137,7 +3144,7 @@
       return;
     }
     if (state?.phase === "player-joker-select") {
-      const cardIndex = getOpponentCardAtPointer(event);
+      const cardIndex = state.pendingJokerReveal?.stage === "swap" ? getCardAtPointer(event) : getOpponentCardAtPointer(event);
       if (cardIndex >= 0) submitJokerReveal(cardIndex);
       return;
     }
@@ -3154,7 +3161,7 @@
 
   canvas.addEventListener("pointermove", handleCanvasPointerMove);
   canvas.addEventListener("pointerleave", () => {
-    hoverCard = -1;
+    setHoverCard(-1);
     hoverOpponentCard = -1;
     canvas.style.cursor = "default";
     if (roomState || state?.phase === "player-play" || state?.phase === "player-joker-select") drawTable();

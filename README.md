@@ -27,7 +27,8 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 - Cada jogador começa com 5 vidas e 7 cartas sorteadas.
 - O baralho tem 42 cartas: 5 de cada um dos 8 animais e 1 de cada carta especial. Cada jogador recebe 7, e as 28 restantes ficam disponíveis na mesa.
 - No modo online, um jogador joga por turno e todos os demais adivinham simultaneamente.
-- Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ver o efeito e clique para jogar; ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
+- Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ampliá-las e ler os efeitos dentro da carta; clique para jogar. Ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
+- As cartas já reveladas permanecem viradas para cima em uma pilha crescente no centro; a carta pendente fica separada, virada para baixo até o palpite.
 - O cronômetro e as opções de palpite aparecem dentro da mesa; vida e cartas são mostradas em indicadores circulares compactos.
 - As opções de palpite formam um leque de cartas. O chat exibe eventos do sistema e resultados das cartas em cards; no modo offline, funciona como log sem envio de mensagens.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
@@ -45,7 +46,7 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 - Macaco: um palpite errado causa 3 de dano, dá 1 carta ao adversário e 2 escudos a quem jogou.
 - Elefante: um palpite errado tira 1 vida e até 2 escudos do adversário.
 - Tartaruga: um palpite certo dá 1 escudo, que bloqueia o próximo evento de dano.
-- Coringa: em erro, quem jogou ganha 1 vida e 1 escudo, revela 2 cartas da mão adversária e escolhe 1 delas para transferir para si.
+- Coringa: em erro, quem jogou ganha 1 vida e 1 escudo. Clique em até 2 cartas no leque adversário para revelá-las, escolha 1 delas e depois uma carta própria para trocá-las. Se o adversário tiver somente 1 carta, revele essa carta. Se o Coringa for sua última carta, você vence antes da troca.
 - Cada ação online tem limite de 40 segundos. Se o tempo acabar, a ação é escolhida automaticamente.
 - Os avisos de resultado aparecem abaixo da mesa; após 2,4 segundos, a próxima jogada começa automaticamente. Ao fim da partida, a mesa mostra o resultado e o botão para jogar novamente.
 - Vence quem ficar sem cartas na mão ou deixar a vida do adversário em zero.

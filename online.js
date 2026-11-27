@@ -243,6 +243,7 @@
     if (result.transferredCard && chatCards[result.transferredCard]) {
       notes.push(`Coringa levou ${chatCards[result.transferredCard][1]}.`);
     }
+    if (result.jokerSwap) notes.push("Coringa trocou uma carta com o adversário.");
     if (result.swappedWith) notes.push("As mãos foram trocadas.");
     const existing = resultId === lastRoomResultId && lastRoomResultElement?.isConnected
       ? lastRoomResultElement : null;

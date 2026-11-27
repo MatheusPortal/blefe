@@ -101,14 +101,14 @@
         case "coringa":
           o.hp = Math.min(5, o.hp + 1);
           o.shields += 1;
-          if (g.cards > 0 && g.hp > 0) { g.cards -= 1; o.cards += 1; }
+          if (g.cards > 0 && o.cards > 0 && g.hp > 0) swapValue = 0.5;
           break;
         case "troca":
           if (o.cards > g.cards) swapValue = (o.cards - g.cards) * 1.3;
           break;
       }
     }
-    const ownerWins = g.hp <= 0 || o.cards === 0 || (!correct && type === "coringa" && guesser.cards > 0 && g.cards === 0);
+    const ownerWins = g.hp <= 0 || o.cards === 0;
     return valueOf(o) - valueOf(g) - before + swapValue + (ownerWins ? 12 : 0);
   }
 

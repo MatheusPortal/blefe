@@ -57,6 +57,7 @@ test("sala mantém cartas ocultas, cronômetros e vitória ao esvaziar a mão", 
   const guestOpening = await guest.next((message) => message.type === "game-state" && message.state.phase === "setup-guess");
   assert.ok(opening.state.deadlineAt > Date.now());
   assert.equal(opening.state.activeCard, null);
+  assert.deepEqual(opening.state.publicDiscards, []);
   assert.ok([0, 1, 2].includes(opening.state.tableTheme));
   assert.equal(guestOpening.state.tableTheme, opening.state.tableTheme);
   assert.equal(opening.state.players.find((player) => player.id !== opening.state.you).hand, undefined);
@@ -75,12 +76,14 @@ test("sala mantém cartas ocultas, cronômetros e vitória ao esvaziar a mão", 
     const pending = (await guesser.next((message) => message.type === "game-state" && message.state.phase === "guess" && message.state.round === round)).state;
     assert.equal(pending.activeCard, null);
     assert.equal(pending.tableCard, null);
+    assert.equal(pending.publicDiscards.length, round);
     assert.ok(pending.deadlineAt > Date.now());
     guesser.send("room-action", { payload: { action: "guess", guess: card } });
     if (round === 13) {
       const finished = (await host.next((message) => message.type === "game-state" && message.state.phase === "finished")).state;
       assert.equal(finished.winnerId, snapshot.turnPlayerId);
       assert.equal(finished.players.find((player) => player.id === finished.winnerId).handCount, 0);
+      assert.equal(finished.publicDiscards.length, round + 1);
     }
   }
 });
