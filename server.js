@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
@@ -12,6 +12,11 @@ const waitingPeers = [];
 const rooms = new Map();
 const peers = new Map();
 const socketPeers = new WeakMap();
+const cardTypes = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga", "troca", "coringa"];
+const aiLearningFile = process.env.AI_LEARNING_FILE || path.join(root, ".data", "ai-learning.json");
+const learningWriteOrigin = new Map();
+let saveLearningPromise = Promise.resolve();
+let aiLearning = newLearningModel();
 const staticFiles = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
@@ -22,6 +27,73 @@ const staticFiles = new Map([
 
 function logEvent(event, details = {}) {
   console.log(JSON.stringify({ at: new Date().toISOString(), event, ...details }));
+}
+
+function newLearningModel() {
+  const counts = () => Object.fromEntries(cardTypes.map((type) => [type, 0]));
+  return {
+    version: 1,
+    observations: 0,
+    humanPlays: counts(),
+    humanGuesses: counts()
+  };
+}
+
+function sanitizeLearningModel(candidate) {
+  const model = newLearningModel();
+  if (!candidate || candidate.version !== 1 || !Number.isSafeInteger(candidate.observations)) return model;
+  for (const group of ["humanPlays", "humanGuesses"]) {
+    for (const type of cardTypes) {
+      const value = candidate[group] && candidate[group][type];
+      if (Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000) model[group][type] = value;
+    }
+  }
+  model.observations = Math.min(candidate.observations, 1_000_000_000);
+  return model;
+}
+
+async function loadLearningModel() {
+  try {
+    aiLearning = sanitizeLearningModel(JSON.parse(await readFile(aiLearningFile, "utf8")));
+    logEvent("ai-learning-loaded", { observations: aiLearning.observations });
+  } catch (error) {
+    if (error.code !== "ENOENT") logEvent("ai-learning-load-error", { message: error.message });
+  }
+}
+
+function saveLearningModel() {
+  saveLearningPromise = saveLearningPromise.catch(() => {})
+    .then(async () => {
+      const snapshot = JSON.stringify(aiLearning);
+      await mkdir(path.dirname(aiLearningFile), { recursive: true });
+      const temporaryFile = `${aiLearningFile}.${process.pid}.tmp`;
+      await writeFile(temporaryFile, snapshot, "utf8");
+      await rename(temporaryFile, aiLearningFile);
+    })
+    .catch((error) => {
+      logEvent("ai-learning-save-error", { message: error.message });
+      throw error;
+    });
+  return saveLearningPromise;
+}
+
+function learningResponse(response, body, status = 200) {
+  response.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store"
+  });
+  response.end(JSON.stringify(body));
+}
+
+async function readJsonBody(request) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 4_096) throw new Error("Payload excede o limite.");
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
 function send(socket, payload) {
@@ -182,6 +254,48 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (url.pathname === "/api/ai-learning" && request.method === "GET") {
+    learningResponse(response, aiLearning);
+    return;
+  }
+
+  if (url.pathname === "/api/ai-learning" && request.method === "POST") {
+    const origin = request.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const window = learningWriteOrigin.get(origin) || { startedAt: now, count: 0 };
+    if (now - window.startedAt >= 60_000) {
+      window.startedAt = now;
+      window.count = 0;
+    }
+    window.count += 1;
+    learningWriteOrigin.set(origin, window);
+    if (window.count > 120) {
+      learningResponse(response, { error: "Muitas observações em pouco tempo." }, 429);
+      return;
+    }
+    try {
+      const observation = await readJsonBody(request);
+      if (
+        !observation
+        || typeof observation !== "object"
+        || (observation.played !== null && !cardTypes.includes(observation.played))
+        || (observation.guessed !== null && !cardTypes.includes(observation.guessed))
+        || (observation.played === null && observation.guessed === null)
+      ) {
+        learningResponse(response, { error: "Observação inválida." }, 400);
+        return;
+      }
+      if (observation.played) aiLearning.humanPlays[observation.played] += 1;
+      if (observation.guessed) aiLearning.humanGuesses[observation.guessed] += 1;
+      aiLearning.observations += 1;
+      await saveLearningModel();
+      learningResponse(response, aiLearning);
+    } catch (error) {
+      learningResponse(response, { error: error.message }, 400);
+    }
+    return;
+  }
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     response.writeHead(405, { allow: "GET, HEAD" });
     response.end();
@@ -296,4 +410,5 @@ const heartbeat = setInterval(() => {
 }, 25_000);
 
 server.on("close", () => clearInterval(heartbeat));
+await loadLearningModel();
 server.listen(port, "0.0.0.0", () => logEvent("server-ready", { port }));

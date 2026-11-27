@@ -24,15 +24,15 @@ Para validar a sintaxe dos arquivos JavaScript, execute `npm run check`.
 ## Regras desta versão
 
 - Cada jogador começa com 5 vidas e 7 cartas sorteadas.
-- Um baralho extra de 20 cartas fica na mesa. Uma carta é revelada no centro; os jogadores dão um palpite antes da revelação.
+- O baralho tem 34 cartas. Cada jogador recebe 7 e as 20 restantes ficam disponíveis na mesa.
 - Quem acertar sozinho começa. Se ambos acertarem ou errarem, os dois rolam dados; empate é lançado novamente.
 - Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ver o efeito e clique para jogar; ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
 - O cronômetro e as opções de palpite aparecem dentro da mesa; vida e cartas são mostradas em indicadores circulares compactos.
-- As opções de palpite formam um leque de cartas. Os avisos da rodada aparecem abaixo da mesa, sem cobrir as cartas; apenas o resultado final fica sobre o tabuleiro.
+- As opções de palpite formam um leque de cartas. O log da partida fica dentro do tabuleiro e, no modo offline, funciona sem envio de mensagens.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
 - Cada carta tocada emite um som curto, com controle para ligar ou desligar o áudio. Ganhos e perdas de vida, sorte, escudos e cartas são destacados com animações junto aos indicadores dos jogadores.
 - O baralho contém 34 cartas físicas, incluindo exatamente uma Troca e um Coringa. A distribuição inicial de 7 cartas por jogador usa a chance natural dessas cartas no baralho.
-- Cartas bônus são compradas do baralho extra. Quando ele acaba, as cartas extras descartadas são embaralhadas novamente. A mão da IA fica escondida e a mesa mostra no máximo 20 cartas viradas para baixo.
+- Cartas bônus são compradas apenas do monte restante das 34 cartas. Quando ele acaba, não surgem cartas novas.
 - Cartas jogadas não voltam à mão.
 - Leão: um palpite errado tira 2 vidas de quem adivinhou.
 - Coelho: um palpite certo dá 1 ponto de sorte a quem adivinhou. Gastar sorte elimina duas opções incorretas durante um palpite.
@@ -49,7 +49,7 @@ Para validar a sintaxe dos arquivos JavaScript, execute `npm run check`.
 
 ## Sobre a IA
 
-A IA do modo offline usa o histórico das cartas jogadas pelo jogador para estimar probabilidades ao adivinhar. Ao escolher a própria carta, considera os palpites e a vida do jogador, mas também introduz variação aleatória para não repetir sempre a mesma opção.
+A IA do modo offline combina os padrões da partida atual com estatísticas agregadas das jogadas e palpites recebidos pelo servidor. Conforme essas observações aumentam, ela reduz a escolha aleatória e passa a priorizar combinações mais informadas. O modelo fica em `.data/ai-learning.json` e também pode usar o arquivo definido por `AI_LEARNING_FILE`; em hospedagens efêmeras, configure armazenamento persistente para manter o aprendizado após reinícios ou implantações.
 
 ## Modo online e implantação
 

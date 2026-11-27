@@ -66,12 +66,23 @@
     }
   }
 
-  function setChatAvailability(available) {
+  function setChatAvailability(available, allowMessages = true, title = "Chat") {
     chatPanel.hidden = !available;
     chatWidget.hidden = !available;
-    chatInput.disabled = !available;
-    chatSendButton.disabled = !available;
+    chatForm.hidden = !allowMessages;
+    chatInput.hidden = !allowMessages;
+    chatSendButton.hidden = !allowMessages;
+    chatInput.disabled = !available || !allowMessages;
+    chatSendButton.disabled = !available || !allowMessages;
+    chatPanel.querySelector("h2").textContent = title;
+    chatPanel.setAttribute("aria-label", title);
     setChatMinimized(available && window.matchMedia("(max-width: 650px)").matches);
+  }
+
+  function showOfflineLog() {
+    clearChat();
+    chatPeerName.textContent = "contra a IA";
+    setChatAvailability(true, false, "Log da partida");
   }
 
   function setChatMinimized(minimized) {
@@ -627,6 +638,7 @@
   window.BlefeOnline = Object.freeze({
     leaveSession,
     logConnection,
-    logGameEvent
+    logGameEvent,
+    showOfflineLog
   });
 })();

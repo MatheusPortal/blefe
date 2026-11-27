@@ -82,9 +82,80 @@
   let systemEventSequence = 0;
   let lastSystemEventId = 0;
   let swapRequestPending = false;
+  let globalLearning = createLocalLearningModel();
+  let learningAvailable = false;
 
   const isOnlineHost = () => onlineRole === "host";
   const isOnlineGuest = () => onlineRole === "guest";
+
+  function createLocalLearningModel() {
+    const counts = Object.fromEntries(CARD_TYPES.map((type) => [type, 0]));
+    return { version: 1, observations: 0, humanPlays: { ...counts }, humanGuesses: { ...counts } };
+  }
+
+  function applyLearningModel(model) {
+    if (
+      !model
+      || model.version !== 1
+      || !Number.isSafeInteger(model.observations)
+      || !model.humanPlays
+      || !model.humanGuesses
+    ) return false;
+    const groups = ["humanPlays", "humanGuesses"];
+    if (!groups.every((group) => CARD_TYPES.every((type) => (
+      Number.isSafeInteger(model[group][type]) && model[group][type] >= 0
+    )))) return false;
+    globalLearning = model;
+    return true;
+  }
+
+  async function loadGlobalLearning() {
+    try {
+      const response = await fetch("/api/ai-learning", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!applyLearningModel(await response.json())) throw new Error("Modelo global inválido");
+      learningAvailable = true;
+    } catch (error) {
+      learningAvailable = false;
+      try {
+        const saved = JSON.parse(localStorage.getItem("blefe-ai-learning") || "null");
+        if (!applyLearningModel(saved)) globalLearning = createLocalLearningModel();
+      } catch {
+        globalLearning = createLocalLearningModel();
+      }
+      if (location.protocol === "http:" || location.protocol === "https:") {
+        console.warn(`Aprendizado global indisponível: ${error.message}. Usando o perfil deste dispositivo.`);
+      }
+    }
+  }
+
+  async function recordLearningObservation(played, guessed) {
+    if (onlineRole) return;
+    const payload = { played, guessed };
+    if (payload.played) globalLearning.humanPlays[payload.played] += 1;
+    if (payload.guessed) globalLearning.humanGuesses[payload.guessed] += 1;
+    globalLearning.observations += 1;
+    if (learningAvailable) {
+      try {
+        const response = await fetch("/api/ai-learning", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        applyLearningModel(await response.json());
+        return;
+      } catch (error) {
+        learningAvailable = false;
+        console.warn(`Não foi possível atualizar o aprendizado global: ${error.message}.`);
+      }
+    }
+    try {
+      localStorage.setItem("blefe-ai-learning", JSON.stringify(globalLearning));
+    } catch (error) {
+      console.warn(`Não foi possível salvar o aprendizado deste dispositivo: ${error.message}`);
+    }
+  }
 
   function showGameView() {
     mainMenu.hidden = true;
@@ -116,6 +187,8 @@
     onlineSession = null;
     onlineNames = null;
     connectionLogButton.hidden = true;
+    window.BlefeOnline?.showOfflineLog();
+    loadGlobalLearning();
     showGameView();
     startGame();
   }
@@ -220,7 +293,7 @@
     if (!state) return;
     state.systemEvents.push(event);
     if (state.systemEvents.length > 40) state.systemEvents.shift();
-    if (onlineRole && window.BlefeOnline) window.BlefeOnline.logGameEvent(event);
+    if (window.BlefeOnline) window.BlefeOnline.logGameEvent(event);
   }
 
   function recordSystemEvent(text) {
@@ -234,7 +307,7 @@
   }
 
   function logLocalSystemMessage(text) {
-    if (onlineRole && window.BlefeOnline) window.BlefeOnline.logGameEvent(text);
+    if (window.BlefeOnline) window.BlefeOnline.logGameEvent(text);
   }
 
   function recordRoundResult(reveal) {
@@ -387,10 +460,6 @@
   }
 
   function drawExtraCard() {
-    if (state.extraDeck.length === 0 && state.extraDiscard.length > 0) {
-      state.extraDeck = shuffle(state.extraDiscard);
-      state.extraDiscard = [];
-    }
     return state.extraDeck.pop() || null;
   }
 
@@ -616,7 +685,7 @@
     const blocked = Math.min(count, player.extraDrawBlocks);
     player.extraDrawBlocks -= blocked;
     for (let index = blocked; index < count; index += 1) {
-      if (state.extraDeck.length === 0 && state.extraDiscard.length === 0) break;
+      if (state.extraDeck.length === 0) break;
       const type = drawExtraCard();
       if (!type) break;
       if (type !== "coringa" && player.hand.filter((card) => card === type).length >= MAX_CARDS_PER_SPECIES) {
@@ -632,7 +701,7 @@
   }
 
   function hasCardsToDraw() {
-    return state.extraDeck.length > 0 || state.extraDiscard.length > 0;
+    return state.extraDeck.length > 0;
   }
 
   function describeCardDraw(result) {
@@ -913,11 +982,13 @@
 
   function probabilityOfPlayerCard() {
     const weights = {};
+    const totalGlobalPlays = Object.values(globalLearning.humanPlays).reduce((sum, value) => sum + value, 0);
     for (const type of CARD_TYPES) {
       if (type === "coringa") {
-        weights[type] = state.aiHasJoker ? 0 : 0.04;
+        weights[type] = state.aiHasJoker ? 0 : (globalLearning.humanPlays.coringa + 1) / (totalGlobalPlays + CARD_TYPES.length);
       } else {
-        weights[type] = 1 + state.playerPlayHistory[type] * 1.3;
+        const globalProbability = (globalLearning.humanPlays[type] + 1) / (totalGlobalPlays + CARD_TYPES.length);
+        weights[type] = (1 + state.playerPlayHistory[type] * 1.3) * (0.35 + globalProbability);
       }
     }
     const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
@@ -1082,6 +1153,7 @@
     };
     const correct = guess === actualType;
     if (guesserKey === "player") state.playerGuessHistory[guess] += 1;
+    recordLearningObservation(owner === "player" ? actualType : null, guesserKey === "player" ? guess : null);
     const effect = resolveCardEffect(actualType, owner, guesserKey, correct);
     const effectSummary = correct && effect === "sem efeito" ? "nada acontece" : effect;
     state.message = correct ? "Palpite certo!" : "Palpite errado!";
@@ -1313,7 +1385,9 @@
     const totalGuesses = Object.values(guessCounts).reduce((sum, value) => sum + value, 0);
     const guessProbability = Object.fromEntries(CARD_TYPES.map((type) => [
       type,
-      (guessCounts[type] + 1) / (totalGuesses + CARD_TYPES.length)
+      ((guessCounts[type] + 1) / (totalGuesses + CARD_TYPES.length)) * 0.65
+        + ((globalLearning.humanGuesses[type] + 1)
+          / (Object.values(globalLearning.humanGuesses).reduce((sum, value) => sum + value, 0) + CARD_TYPES.length)) * 0.35
     ]));
     const playerIsWeak = state.players.player.hp <= 2;
     const scores = {
@@ -1330,7 +1404,9 @@
     };
     const mixedScores = (type) => scores[type] - state.aiPlayHistory[type] * 0.4;
 
-    if (Math.random() < 0.65) return hand[Math.floor(Math.random() * hand.length)];
+    if (Math.random() < Math.max(0.2, 0.65 - globalLearning.observations / 2500)) {
+      return hand[Math.floor(Math.random() * hand.length)];
+    }
     return sampleByScore(hand, mixedScores, 1.6);
   }
 
@@ -2005,7 +2081,7 @@
     const y = mobile ? 520 : 272;
     const cardWidth = mobile ? 96 : 76;
     const cardHeight = mobile ? 138 : 108;
-    const canDraw = state.extraDeck.length > 0 || state.extraDiscard.length > 0;
+    const canDraw = state.extraDeck.length > 0;
     ctx.save();
     ctx.textAlign = "center";
     ctx.fillStyle = "rgba(226, 238, 221, .72)";
