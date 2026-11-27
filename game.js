@@ -84,6 +84,7 @@
   let swapRequestPending = false;
   let globalLearning = createLocalLearningModel();
   let learningAvailable = false;
+  let actionRenderKey = "";
 
   const isOnlineHost = () => onlineRole === "host";
   const isOnlineGuest = () => onlineRole === "guest";
@@ -1518,6 +1519,10 @@
       "ai-joker-select": "player-joker-select"
     };
     snapshot.phase = phaseMap[state.phase] || state.phase;
+    if (state.phase === "setup-guess" && state.setupGuesses.ai) {
+      snapshot.phase = "setup-wait";
+      snapshot.message = "Palpite enviado. Aguardando o outro jogador...";
+    }
     if (snapshot.phase === "player-play") snapshot.message = `Vez do jogador ${snapshot.players.player.name}.`;
     else if (snapshot.phase === "player-guess") snapshot.message = "Sua vez de adivinhar.";
     else if (snapshot.phase === "ai-play") snapshot.message = `Aguardando a jogada de ${snapshot.players.ai.name}.`;
@@ -1606,7 +1611,7 @@
 
   function isValidOnlineSnapshot(snapshot) {
     const phases = [
-      "setup-guess", "setup-revealing", "setup-result", "dice-roll",
+      "setup-guess", "setup-wait", "setup-revealing", "setup-result", "dice-roll",
       "player-play", "ai-play", "player-guess", "ai-guess",
       "player-joker-select", "ai-joker-select",
       "revealing", "result", "game-over"
@@ -1754,6 +1759,9 @@
   }
 
   function renderActions() {
+    const renderKey = `${state.phase}:${state.eliminated.join(",")}:${actionArea.clientWidth}`;
+    if (renderKey === actionRenderKey) return;
+    actionRenderKey = renderKey;
     actionArea.replaceChildren();
 
     if (state.phase === "setup-guess") {
@@ -1842,7 +1850,7 @@
     ctx.stroke();
 
     drawPlayerPanel(ctx, 1012, 78, state.players.ai, onlineRole ? state.players.ai.name : "IA", false);
-    drawPlayerPanel(ctx, 1012, 568, state.players.player, onlineRole ? state.players.player.name : "VOCÊ", true);
+    drawPlayerPanel(ctx, 88, 568, state.players.player, onlineRole ? state.players.player.name : "VOCÊ", true);
     drawExtraDeck(ctx);
     drawAiHand(ctx);
     drawCenter(ctx, width / 2, 326);
@@ -1854,14 +1862,18 @@
     ctx.fillStyle = "rgba(233, 243, 224, .66)";
     ctx.font = "10px Consolas, monospace";
     ctx.textAlign = "center";
-    const phaseText = ["setup-guess", "setup-revealing", "setup-result", "dice-roll"].includes(state.phase)
+    const phaseText = state.phase === "setup-wait"
+      ? "AGUARDANDO ADVERSÁRIO"
+      : ["setup-guess", "setup-revealing", "setup-result", "dice-roll"].includes(state.phase)
       ? state.phase === "dice-roll" ? "DESEMPATE" : "PALPITE DE ABERTURA"
       : state.phase === "player-play" ? "SUA VEZ"
         : state.phase === "player-guess" ? "SEU PALPITE"
           : ["result", "game-over"].includes(state.phase) ? "REVELADA"
             : state.phase === "dealing" ? "EMBARALHANDO"
-              : onlineRole && ["ai-play", "ai-guess"].includes(state.phase)
-                ? state.phase === "ai-play" ? "AGUARDANDO JOGADA" : "AGUARDANDO PALPITE"
+              : onlineRole
+                ? state.phase === "ai-play" ? "AGUARDANDO JOGADA"
+                  : state.phase === "ai-guess" ? "AGUARDANDO PALPITE"
+                    : "AGUARDANDO ADVERSÁRIO"
                 : "A IA PENSA";
     ctx.fillText(phaseText, width / 2, 250);
 
@@ -1910,7 +1922,7 @@
     ctx.stroke();
 
     drawMobilePlayerPanel(ctx, 690, 76, state.players.ai, onlineRole ? state.players.ai.name : "IA", false);
-    drawMobilePlayerPanel(ctx, 690, 1410, state.players.player, onlineRole ? state.players.player.name : "VOCÊ", true);
+    drawMobilePlayerPanel(ctx, 90, 1410, state.players.player, onlineRole ? state.players.player.name : "VOCÊ", true);
     drawExtraDeck(ctx);
     drawAiHand(ctx);
     drawCenter(ctx, width / 2, 650);
@@ -1922,14 +1934,18 @@
     ctx.fillStyle = "rgba(233, 243, 224, .72)";
     ctx.font = "16px Consolas, monospace";
     ctx.textAlign = "center";
-    const phaseText = ["setup-guess", "setup-revealing", "setup-result", "dice-roll"].includes(state.phase)
+    const phaseText = state.phase === "setup-wait"
+      ? "AGUARDANDO ADVERSÁRIO"
+      : ["setup-guess", "setup-revealing", "setup-result", "dice-roll"].includes(state.phase)
       ? state.phase === "dice-roll" ? "DADOS" : "PALPITE DE ABERTURA"
         : state.phase === "player-play" ? "SUA VEZ"
           : state.phase === "player-guess" ? "SEU PALPITE"
             : ["result", "game-over"].includes(state.phase) ? "REVELADA"
               : state.phase === "dealing" ? "DISTRIBUINDO"
-                : onlineRole && ["ai-play", "ai-guess"].includes(state.phase)
-                  ? state.phase === "ai-play" ? "AGUARDANDO JOGADA" : "AGUARDANDO PALPITE"
+                : onlineRole
+                  ? state.phase === "ai-play" ? "AGUARDANDO JOGADA"
+                    : state.phase === "ai-guess" ? "AGUARDANDO PALPITE"
+                      : "AGUARDANDO ADVERSÁRIO"
                   : "IA PENSA";
     ctx.fillText(phaseText, width / 2, 480);
 
