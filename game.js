@@ -51,6 +51,19 @@
   const roundCountdown = document.querySelector("#round-countdown");
   const roundCountdownValue = document.querySelector("#round-countdown-value");
   const rulesDialog = document.querySelector("#rules-dialog");
+  const cardRuleDetails = new Map(Array.from(rulesDialog.querySelectorAll(".rules-card"), (card) => [
+    card.querySelector("h4").textContent.trim(),
+    Array.from(card.querySelectorAll(".rules-card-outcome"), (outcome) => ({
+      heading: outcome.querySelector("h5").textContent.trim(),
+      rows: Array.from(outcome.querySelectorAll(".rules-effect-row"), (row) => ({
+        target: row.querySelector(".rules-effect-target").textContent.trim(),
+        chips: Array.from(row.querySelectorAll(".rules-chip"), (chip) => ({
+          text: chip.textContent.trim(),
+          tone: ["gain", "loss", "action", "neutral"].find((tone) => chip.classList.contains(`is-${tone}`))
+        }))
+      }))
+    }))
+  ]));
   const soundToggle = document.querySelector("#sound-toggle");
   const mainMenu = document.querySelector("#main-menu");
   const gameShell = document.querySelector("#game-shell");
@@ -2813,11 +2826,11 @@
   }
 
   function handCardGeometry(layout, progress) {
-    const width = CARD_WIDTH + ((isMobileCanvas() ? 320 : 220) - CARD_WIDTH) * progress;
-    const height = CARD_HEIGHT + ((isMobileCanvas() ? 430 : 290) - CARD_HEIGHT) * progress;
+    const width = CARD_WIDTH + ((isMobileCanvas() ? 270 : 180) - CARD_WIDTH) * progress;
+    const height = CARD_HEIGHT + ((isMobileCanvas() ? 390 : 240) - CARD_HEIGHT) * progress;
     return {
       x: Math.max(width / 2 + 4, Math.min(canvasWidth - width / 2 - 4, layout.x)),
-      y: layout.y - (isMobileCanvas() ? 125 : 105) * progress,
+      y: layout.y - (isMobileCanvas() ? 125 : 15) * progress,
       width,
       height,
       angle: layout.angle * (1 - progress)
@@ -2882,15 +2895,85 @@
     const height = isMobileCanvas() ? 176 : 144;
     const visible = cards;
     visible.forEach((card, index) => {
-      const depth = visible.length - index - 1;
+      const depth = visible.length - index - 1 + (hidden ? 1 : 0);
       drawCard(ctx, centerX - width / 2 - depth * 1.1, centerY - height / 2 + depth,
         card, width, height, (index % 2 ? 1 : -1) * Math.min(depth * 0.025, 0.12));
     });
-    if (hidden) {
-      const offsetX = visible.length ? width * 0.95 : 0;
-      const offsetY = visible.length ? -height * 0.65 : 0;
-      drawCard(ctx, centerX - width / 2 + offsetX, centerY - height / 2 + offsetY, null, width, height);
+    if (hidden) drawCard(ctx, centerX - width / 2, centerY - height / 2, null, width, height);
+  }
+
+  function drawCardDetails(ctx, card, width, height) {
+    const scale = isMobileCanvas() ? 1.5 : 1;
+    const fontSize = 12.5 * scale;
+    const pad = 10 * scale;
+    const chipHeight = 20 * scale;
+    const gap = 3 * scale;
+    const maxWidth = width - pad * 2;
+    const colors = {
+      gain: ["#e1f3e7", "#226b45"],
+      loss: ["#fae4df", "#a23e35"],
+      neutral: ["#e8e8e0", "#57635d"],
+      action: ["#f3edce", "#6e601e"]
+    };
+    const iconText = (text) => text.replace("♥", "❤️").replace("⬡", "🛡️")
+      .replace("✦", "🍀").replace("▣", "🃏");
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#24312b";
+    ctx.font = `${22 * scale}px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif`;
+    ctx.fillText(card.emoji, -width / 2 + pad, -height / 2 + 20 * scale);
+    ctx.font = `bold ${12 * scale}px 'Segoe UI', sans-serif`;
+    ctx.fillText(card.name.toUpperCase(), -width / 2 + pad + 29 * scale, -height / 2 + 20 * scale);
+    let y = -height / 2 + 36 * scale;
+
+    for (const outcome of cardRuleDetails.get(card.name)) {
+      ctx.fillStyle = "#7a867d";
+      ctx.font = `bold ${10 * scale}px 'Segoe UI', sans-serif`;
+      ctx.fillText(outcome.heading.toUpperCase(), -width / 2 + pad, y);
+      y += 12 * scale;
+      for (const row of outcome.rows) {
+        ctx.fillStyle = "#35443d";
+        ctx.font = `bold ${10 * scale}px 'Segoe UI', sans-serif`;
+        ctx.fillText(row.target, -width / 2 + pad, y);
+        y += 8 * scale;
+        let x = -width / 2 + pad;
+        ctx.font = `${fontSize}px 'Segoe UI', 'Segoe UI Emoji', sans-serif`;
+        for (const chip of row.chips) {
+          let text = iconText(chip.text);
+          if (chip.tone === "action") text = `${text.startsWith("Vida cheia") ? "🛡️" : "🔄"} ${text}`;
+          const lines = [];
+          let line = "";
+          for (const word of text.split(/\s+/)) {
+            const next = line ? `${line} ${word}` : word;
+            if (line && ctx.measureText(next).width > maxWidth - 10 * scale) {
+              lines.push(line);
+              line = word;
+            } else line = next;
+          }
+          if (line) lines.push(line);
+          const chipWidth = Math.min(maxWidth, Math.max(...lines.map((part) => ctx.measureText(part).width)) + 10 * scale);
+          const totalHeight = chipHeight + (lines.length - 1) * 14 * scale;
+          if (x + chipWidth > -width / 2 + pad + maxWidth) {
+            x = -width / 2 + pad;
+            y += chipHeight + gap;
+          }
+          const [background, foreground] = colors[chip.tone];
+          ctx.fillStyle = background;
+          roundRect(ctx, x, y, chipWidth, totalHeight, 5 * scale);
+          ctx.fill();
+          ctx.fillStyle = foreground;
+          lines.forEach((part, index) => ctx.fillText(part, x + 5 * scale, y + chipHeight / 2 + index * 14 * scale));
+          x += chipWidth + gap;
+          if (lines.length > 1) {
+            x = -width / 2 + pad;
+            y += totalHeight + gap - chipHeight;
+          }
+        }
+        y += chipHeight + 5 * scale;
+      }
+      y += 3 * scale;
     }
+    ctx.textBaseline = "alphabetic";
   }
 
   function drawCard(ctx, x, y, type, width, height, angle = 0, highlighted = false, details = false) {
@@ -2920,37 +3003,7 @@
     ctx.stroke();
 
     if (type && details) {
-      const card = CARDS[type];
-      const fontSize = isMobileCanvas() ? 22 : 13;
-      const lineHeight = fontSize * 1.3;
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#24312b";
-      ctx.font = `${Math.round(width * 0.22)}px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif`;
-      ctx.fillText(card.emoji, 0, -height / 2 + height * 0.26);
-      ctx.fillStyle = "#24312b";
-      ctx.font = `bold ${Math.round(fontSize * 1.25)}px 'Segoe UI', sans-serif`;
-      ctx.fillText(card.name.toUpperCase(), 0, -height / 2 + height * 0.36);
-      ctx.fillStyle = card.color;
-      ctx.fillRect(-width * 0.35, -height / 2 + height * 0.39, width * 0.7, 4);
-      ctx.textAlign = "left";
-      ctx.fillStyle = "#35443d";
-      ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
-      let lineY = -height / 2 + height * 0.48;
-      for (const paragraph of card.effect.split(/(?=Acerto —)/)) {
-        let line = "";
-        for (const word of paragraph.trim().split(/\s+/)) {
-          const next = line ? `${line} ${word}` : word;
-          if (line && ctx.measureText(next).width > width - 28) {
-            ctx.fillText(line, -width / 2 + 14, lineY);
-            lineY += lineHeight;
-            line = word;
-          } else line = next;
-        }
-        if (line) {
-          ctx.fillText(line, -width / 2 + 14, lineY);
-          lineY += lineHeight * 1.25;
-        }
-      }
+      drawCardDetails(ctx, CARDS[type], width, height);
     } else if (type) {
       const mobile = isMobileCanvas();
       ctx.textAlign = "center";

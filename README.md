@@ -27,8 +27,8 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 - Cada jogador começa com 5 vidas e 7 cartas sorteadas.
 - O baralho tem 42 cartas: 5 de cada um dos 8 animais e 1 de cada carta especial. Cada jogador recebe 7, e as 28 restantes ficam disponíveis na mesa.
 - No modo online, um jogador joga por turno e todos os demais adivinham simultaneamente.
-- Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ampliá-las e ler os efeitos dentro da carta; clique para jogar. Ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
-- As cartas já reveladas permanecem viradas para cima em uma pilha crescente no centro; a carta pendente fica separada, virada para baixo até o palpite.
+- Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ampliá-las e ver os efeitos em indicadores como nos cards das regras; clique para jogar. Ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
+- A carta jogada fica virada para baixo no centro até o palpite e é revelada no mesmo lugar, sobre a pilha crescente de cartas já reveladas.
 - O cronômetro e as opções de palpite aparecem dentro da mesa; vida e cartas são mostradas em indicadores circulares compactos.
 - As opções de palpite formam um leque de cartas. O chat exibe eventos do sistema e resultados das cartas em cards; no modo offline, funciona como log sem envio de mensagens.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
