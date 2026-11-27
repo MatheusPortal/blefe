@@ -1930,6 +1930,17 @@
       return roomState.players.filter((player) => player.id !== roomState.you);
   }
 
+  function getRoomJokerLayouts() {
+    const mobile = isMobileCanvas();
+    return (roomState.jokerSelection?.cards || []).map((card, index) => ({
+      card,
+      x: canvasWidth / 2 + (index === 0 ? -1 : 1) * (mobile ? 95 : 72),
+      y: mobile ? 850 : 420,
+      width: mobile ? 96 : 72,
+      height: mobile ? 138 : 104
+    }));
+  }
+
   function renderRoom() {
       if (!roomState) return;
       drawTable();
@@ -2025,15 +2036,7 @@
         drawDie(ctx, mobile ? 270 : 455, mobile ? 650 : 326, roomState.dice[ids[0]]);
         drawDie(ctx, mobile ? 510 : 645, mobile ? 650 : 326, roomState.dice[ids[1]]);
       }
-      if (roomState.lastResult) {
-        ctx.fillStyle = "rgba(8,20,20,.75)";
-        roundRect(ctx, mobile ? 165 : 350, centerY - (mobile ? 245 : 170), mobile ? 450 : 400, mobile ? 72 : 52, 9);
-        ctx.fill();
-        ctx.fillStyle = roomState.lastResult.ownerId === roomState.you ? "#c9ef74" : "#e5eddf";
-        ctx.font = `bold ${mobile ? 16 : 11}px 'Segoe UI', sans-serif`;
-        ctx.textAlign = "center";
-        ctx.fillText(`${CARDS[roomState.lastResult.card].emoji} ${CARDS[roomState.lastResult.card].name}`, width / 2, centerY - (mobile ? 218 : 148));
-      }
+      drawRoomJokerSelection(ctx);
 
       function drawRoomExtraDeck(ctx) {
         const mobile = isMobileCanvas();
@@ -2051,10 +2054,37 @@
           drawCard(ctx, x + 4, y + 4, null, cardWidth, cardHeight);
           drawCard(ctx, x, y, null, cardWidth, cardHeight);
         }
+
         ctx.fillStyle = "#c9ef74";
         ctx.font = `bold ${mobile ? 17 : 11}px Consolas, monospace`;
         ctx.fillText(String(count), x + cardWidth / 2, y + cardHeight + 20);
         ctx.restore();
+      }
+
+      function getRoomJokerLayouts() {
+        const mobile = isMobileCanvas();
+        return (roomState.jokerSelection?.cards || []).map((card, index) => ({
+          card,
+          x: canvasWidth / 2 + (index === 0 ? -1 : 1) * (mobile ? 95 : 72),
+          y: mobile ? 850 : 420,
+          width: mobile ? 96 : 72,
+          height: mobile ? 138 : 104
+        }));
+      }
+
+      function drawRoomJokerSelection(ctx) {
+        if (roomState.phase !== "joker-select" || !roomState.jokerSelection) return;
+        for (const layout of getRoomJokerLayouts()) {
+          drawCard(ctx, layout.x - layout.width / 2, layout.y - layout.height / 2, layout.card, layout.width, layout.height, 0, true);
+        }
+        ctx.fillStyle = "#dce9d7";
+        ctx.font = `${isMobileCanvas() ? 15 : 10}px Consolas, monospace`;
+        ctx.textAlign = "center";
+        ctx.fillText(
+          roomState.jokerSelection.ownerId === roomState.you ? "ESCOLHA UMA CARTA PARA LEVAR" : "O ADVERSÁRIO ESTÁ ESCOLHENDO",
+          canvasWidth / 2,
+          isMobileCanvas() ? 760 : 350
+        );
       }
 
       function drawRoomGuessMarkers(ctx) {
@@ -2915,6 +2945,17 @@
 
   function handleCanvasClick(event) {
     if (roomState && onlineRole === "room") {
+      if (roomState.phase === "joker-select" && roomState.jokerSelection?.ownerId === roomState.you) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) * (canvasWidth / rect.width);
+        const y = (event.clientY - rect.top) * (canvasHeight / rect.height);
+        const index = getRoomJokerLayouts().findIndex((layout) => (
+          Math.abs(x - layout.x) <= layout.width / 2
+          && Math.abs(y - layout.y) <= layout.height / 2
+        ));
+        if (index >= 0) roomSession?.sendAction({ action: "joker-pick", index });
+        return;
+      }
       if (roomState.phase !== "play" || roomState.turnPlayerId !== roomState.you) return;
       const cardIndex = getCardAtPointer(event);
       if (cardIndex >= 0) playRoomCard(cardIndex);

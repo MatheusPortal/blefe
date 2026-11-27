@@ -266,6 +266,7 @@ function startRoomGame(room) {
     lastResult: null,
     winnerId: null,
     swapOwnerId: null,
+    jokerSelection: null,
     deadlineTimer: null
   };
   room.status = "playing";
@@ -302,7 +303,7 @@ function broadcastGame(room, phase = room.game?.phase) {
       phase,
       round: game.round,
       turnPlayerId: game.turnPlayerId,
-      activeCard: phase === "result" || phase === "finished" ? game.activeCard : null,
+      activeCard: phase === "result" || phase === "finished" || phase === "joker-select" ? game.activeCard : null,
       hasActiveCard: Boolean(game.activeCard),
       guessCount: ["guess", "setup-guess"].includes(phase) ? game.guesses.size : undefined,
       guessed: ["guess", "setup-guess"].includes(phase) ? game.guesses.has(peer.publicId) : false,
@@ -315,7 +316,7 @@ function broadcastGame(room, phase = room.game?.phase) {
       guesses: phase === "result" || phase === "finished"
         ? Object.fromEntries(game.guesses)
         : undefined,
-      lastResult: game.lastResult && (phase === "result" || phase === "finished") ? {
+      lastResult: game.lastResult && (phase === "result" || phase === "finished" || phase === "joker-select") ? {
         ...game.lastResult,
         outcomes: game.lastResult.outcomes.map(({ cards, ...outcome }) => ({
           ...outcome,
@@ -323,6 +324,11 @@ function broadcastGame(room, phase = room.game?.phase) {
         }))
       } : null,
       swapOwnerId: game.swapOwnerId,
+      jokerSelection: game.jokerSelection ? {
+        ownerId: game.jokerSelection.ownerId,
+        targetId: game.jokerSelection.targetId,
+        cards: game.jokerSelection.ownerId === peer.publicId ? [...game.jokerSelection.cards] : []
+      } : null,
       winnerId: game.winnerId,
       extraDeckCount: game.deck.length,
       players: gamePlayerList(game, peer.publicId),
@@ -357,6 +363,26 @@ function scheduleDeadline(room) {
           game.phase = "guess";
           broadcastGame(room);
           scheduleDeadline(room);
+        }
+      } else if (game.phase === "joker-select") {
+        const selection = game.jokerSelection;
+        if (selection) {
+          const owner = game.players.get(selection.ownerId);
+          const target = game.players.get(selection.targetId);
+          const first = selection.indices[0];
+          const transferred = target?.hand.splice(first, 1)[0];
+          if (transferred) owner?.hand.push(transferred);
+          game.lastResult.transferredCard = transferred;
+          game.lastResult.attributes = (game.lastResult.attributes || []).concat(
+            { playerId: target.id, playerName: target.nickname, attribute: "cards", value: -1 },
+            { playerId: owner.id, playerName: owner.nickname, attribute: "cards", value: 1 }
+          );
+          game.jokerSelection = null;
+          game.phase = "result";
+          checkEliminationsAndWinner(room);
+          if (room.status === "finished") return;
+          broadcastGame(room, "result");
+          scheduleNextTurn(room);
         }
       } else if (game.phase === "setup-guess") {
         const available = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga"];
@@ -475,9 +501,8 @@ function resolveEffect(game, type, owner, guesser, correct) {
     if (guesser.hand.length > 0) {
       const indices = shuffle(guesser.hand.map((_, index) => index)).slice(0, 2);
       result.revealedCards = indices.map((index) => guesser.hand[index]);
-      const chosen = indices[Math.floor(Math.random() * indices.length)];
-      result.transferredCard = guesser.hand.splice(chosen, 1)[0];
-      owner.hand.push(result.transferredCard);
+      result.jokerPending = true;
+      game.jokerSelection = { ownerId: owner.id, targetId: guesser.id, cards: result.revealedCards, indices };
     }
   }
   return result;
@@ -568,10 +593,12 @@ function resolveRound(room) {
     })
   };
   game.phase = "result";
-  checkEliminationsAndWinner(room);
+  if (game.jokerSelection) game.phase = "joker-select";
+  if (!game.jokerSelection) checkEliminationsAndWinner(room);
   if (room.status === "playing") {
-    broadcastGame(room, "result");
-    scheduleNextTurn(room);
+    broadcastGame(room, game.phase);
+    if (game.phase === "result") scheduleNextTurn(room);
+    else scheduleDeadline(room);
   }
 }
 
@@ -683,6 +710,33 @@ function handleRoomAction(peer, action) {
     game.swapOwnerId = null;
     game.lastResult.swappedWith = target.id;
     broadcastGame(room, "result");
+    return;
+  }
+  if (action.action === "joker-pick") {
+    const selection = game.jokerSelection;
+    if (
+      game.phase !== "joker-select"
+      || !selection
+      || selection.ownerId !== player.id
+      || !Number.isInteger(action.index)
+      || action.index < 0
+      || action.index >= selection.indices.length
+    ) throw new Error("A escolha do Coringa não está disponível.");
+    const target = game.players.get(selection.targetId);
+    const index = selection.indices[action.index];
+    const transferred = target.hand.splice(index, 1)[0];
+    if (transferred) player.hand.push(transferred);
+    game.lastResult.transferredCard = transferred;
+    game.lastResult.attributes = (game.lastResult.attributes || []).concat(
+      { playerId: target.id, playerName: target.nickname, attribute: "cards", value: -1 },
+      { playerId: player.id, playerName: player.nickname, attribute: "cards", value: 1 }
+    );
+    game.jokerSelection = null;
+    game.phase = "result";
+    checkEliminationsAndWinner(room);
+    if (room.status === "finished") return;
+    broadcastGame(room, "result");
+    scheduleNextTurn(room);
     return;
   }
   throw new Error("Ação de sala inválida.");
