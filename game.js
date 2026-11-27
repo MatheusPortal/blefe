@@ -1404,6 +1404,10 @@
   }
 
   function useLuck() {
+    if (onlineRole === "room" && roomState) {
+      roomSession?.sendAction({ action: "use-luck" });
+      return;
+    }
     if (state.phase !== "player-guess" || state.players.player.luck < 1 || state.hintUsed) return;
     if (isOnlineGuest()) {
       sendOnlineAction("use-luck");
@@ -1879,7 +1883,9 @@
         });
       } else if (roomState.phase === "guess" && roomState.turnPlayerId !== roomState.you && !roomState.guessed) {
         CARD_TYPES.forEach((type, index) => {
-          addGuessButton(type, () => roomSession?.sendAction({ action: "guess", guess: type }), index, CARD_TYPES.length);
+          const button = addGuessButton(type, () => roomSession?.sendAction({ action: "guess", guess: type }), index, CARD_TYPES.length);
+          button.disabled = (roomState.eliminated || []).includes(type);
+          button.classList.toggle("is-eliminated", button.disabled);
         });
       }
       return;
@@ -1952,11 +1958,20 @@
   function renderRoom() {
       if (!roomState) return;
       drawTable();
-      roundCountdown.hidden = true;
+      roundCountdown.hidden = !roomState.nextTurnAt;
+      if (roomState.nextTurnAt) {
+        roundCountdownValue.textContent = String(Math.max(0, Math.ceil((roomState.nextTurnAt - Date.now()) / 1000)));
+      }
       timer.hidden = !Number.isInteger(roomState.seconds);
       timerValue.textContent = String(roomState.seconds ?? 0);
       timer.classList.toggle("is-low", (roomState.seconds ?? 0) <= 10);
       useLuckButton.hidden = true;
+      if (roomState.phase === "guess" && roomState.turnPlayerId !== roomState.you) {
+        const own = getRoomPlayer();
+        useLuckButton.hidden = false;
+        useLuckButton.disabled = !own || own.luck < 1 || (roomState.eliminated || []).length > 0;
+        useLuckButton.textContent = `✦ Usar sorte (${own?.luck || 0})`;
+      }
       swapHandsButton.hidden = roomState.swapOwnerId !== roomState.you;
       tableOverlay.hidden = roomState.phase !== "finished";
       const winner = roomState.players.find((player) => player.id === roomState.winnerId);
@@ -1991,13 +2006,18 @@
   function updateRoomClock() {
     window.clearInterval(roomClockInterval);
     roomClockInterval = null;
-    if (!roomState?.deadlineAt) return;
+    if (!roomState?.deadlineAt && !roomState?.nextTurnAt) return;
     const tick = () => {
-      if (!roomState?.deadlineAt) return;
-      const seconds = Math.max(0, Math.ceil((roomState.deadlineAt - Date.now()) / 1000));
-      timerValue.textContent = String(seconds);
-      timer.classList.toggle("is-low", seconds <= 10);
-      timer.hidden = false;
+      if (roomState?.deadlineAt) {
+        const seconds = Math.max(0, Math.ceil((roomState.deadlineAt - Date.now()) / 1000));
+        timerValue.textContent = String(seconds);
+        timer.classList.toggle("is-low", seconds <= 10);
+        timer.hidden = false;
+      }
+      if (roomState.nextTurnAt) {
+        roundCountdown.hidden = false;
+        roundCountdownValue.textContent = String(Math.max(0, Math.ceil((roomState.nextTurnAt - Date.now()) / 1000)));
+      } else roundCountdown.hidden = true;
     };
     tick();
     roomClockInterval = window.setInterval(tick, 250);
@@ -2166,22 +2186,47 @@
     const cardWidth = mobile ? 94 : 94;
     const cardHeight = mobile ? 132 : 132;
     const spacing = count > 1 ? Math.min(mobile ? 42 : 30, (mobile ? 460 : 520) / (count - 1)) : 0;
-    const compacted = ["setup-guess", "guess", "setup-result", "dice-roll"].includes(roomState.phase);
+    const compacted = ["setup-guess", "guess", "setup-result", "dice-roll", "joker-reveal", "joker-select"].includes(roomState.phase);
     const centerX = compacted ? canvasWidth - (mobile ? 70 : 70) : canvasWidth / 2;
     const startX = compacted ? centerX - ((count - 1) * (mobile ? 4 : 3)) / 2 : canvasWidth / 2 - ((count - 1) * spacing) / 2;
     for (let index = 0; index < count; index += 1) {
       const normalized = count > 1 ? (index / (count - 1)) * 2 - 1 : 0;
+      const selected = roomState.jokerSelection?.selectedIndices?.includes(index);
       drawCard(
         ctx,
         startX + index * (compacted ? mobile ? 4 : 3 : spacing) - cardWidth / 2,
         compacted
           ? (mobile ? 300 : 185) + Math.abs(normalized) * 2
           : (mobile ? 184 : 22) + Math.abs(normalized) * 9,
-        null,
+        roomState.jokerSelection?.stage === "select" && selected
+          ? roomState.jokerSelection.cards[roomState.jokerSelection.selectedIndices.indexOf(index)]
+          : null,
         cardWidth,
-        cardHeight
+        cardHeight,
+        0,
+        selected
       );
     }
+
+  }
+
+  function getRoomOpponentCardAtPointer(event, opponent) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * (canvasWidth / rect.width);
+    const y = (event.clientY - rect.top) * (canvasHeight / rect.height);
+    const count = Math.min(opponent.handCount || 0, MAX_FACE_DOWN_CARDS);
+    const cardWidth = 94;
+    const cardHeight = 132;
+    const mobile = isMobileCanvas();
+    const spacing = count > 1 ? (mobile ? 4 : 3) : 0;
+    const centerX = canvasWidth - (mobile ? 70 : 70);
+    const startX = centerX - ((count - 1) * spacing) / 2;
+    for (let index = count - 1; index >= 0; index -= 1) {
+      const cardX = startX + index * spacing;
+      const cardY = mobile ? 300 : 185;
+      if (Math.abs(x - cardX) <= cardWidth / 2 && Math.abs(y - (cardY + cardHeight / 2)) <= cardHeight / 2) return index;
+    }
+    return -1;
   }
 
   function getRoomCardLayouts(hand) {
@@ -2993,6 +3038,12 @@
 
   function handleCanvasClick(event) {
     if (roomState && onlineRole === "room") {
+      if (roomState.phase === "joker-reveal" && roomState.jokerSelection?.ownerId === roomState.you) {
+        const opponent = roomState.players.find((player) => player.id === roomState.jokerSelection.targetId);
+        const index = opponent ? getRoomOpponentCardAtPointer(event, opponent) : -1;
+        if (index >= 0) roomSession?.sendAction({ action: "joker-reveal", index });
+        return;
+      }
       if (roomState.phase === "joker-select" && roomState.jokerSelection?.ownerId === roomState.you) {
         const rect = canvas.getBoundingClientRect();
         const x = (event.clientX - rect.left) * (canvasWidth / rect.width);

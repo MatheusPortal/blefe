@@ -269,7 +269,8 @@ function startRoomGame(room) {
     winnerId: null,
     swapOwnerId: null,
     jokerSelection: null,
-    deadlineTimer: null
+    deadlineTimer: null,
+    eliminated: []
   };
   room.status = "playing";
   broadcastRoom(room, {
@@ -331,8 +332,14 @@ function broadcastGame(room, phase = room.game?.phase) {
       jokerSelection: game.jokerSelection ? {
         ownerId: game.jokerSelection.ownerId,
         targetId: game.jokerSelection.targetId,
-        cards: game.jokerSelection.ownerId === peer.publicId ? [...game.jokerSelection.cards] : []
+        stage: game.jokerSelection.stage,
+        selectedIndices: [...game.jokerSelection.selectedIndices],
+        cards: game.jokerSelection.stage === "select" && game.jokerSelection.ownerId === peer.publicId
+          ? [...game.jokerSelection.cards]
+          : []
       } : null,
+      eliminated: [...(game.eliminated || [])],
+      nextTurnAt: game.nextTurnAt || null,
       winnerId: game.winnerId,
       rematchRequests: [...(room.rematchRequests || [])],
       extraDeckCount: game.deck.length,
@@ -369,9 +376,21 @@ function scheduleDeadline(room) {
           broadcastGame(room);
           scheduleDeadline(room);
         }
-      } else if (game.phase === "joker-select") {
+      } else if (game.phase === "joker-reveal" || game.phase === "joker-select") {
         const selection = game.jokerSelection;
-        if (selection) {
+        if (game.phase === "joker-reveal" && selection) {
+          const target = game.players.get(selection.targetId);
+          for (const index of shuffle(target.hand.map((_, cardIndex) => cardIndex))) {
+            if (selection.selectedIndices.length >= Math.min(2, target.hand.length)) break;
+            if (!selection.selectedIndices.includes(index)) selection.selectedIndices.push(index);
+          }
+          selection.indices = [...selection.selectedIndices];
+          selection.cards = selection.indices.map((index) => target.hand[index]);
+          selection.stage = "select";
+          game.phase = "joker-select";
+          scheduleDeadline(room);
+          broadcastGame(room);
+        } else if (selection) {
           const owner = game.players.get(selection.ownerId);
           const target = game.players.get(selection.targetId);
           const first = selection.indices[0];
@@ -504,10 +523,15 @@ function resolveEffect(game, type, owner, guesser, correct) {
     result.ownerHp = healed;
     result.ownerShields = 1;
     if (guesser.hand.length > 0) {
-      const indices = shuffle(guesser.hand.map((_, index) => index)).slice(0, 2);
-      result.revealedCards = indices.map((index) => guesser.hand[index]);
       result.jokerPending = true;
-      game.jokerSelection = { ownerId: owner.id, targetId: guesser.id, cards: result.revealedCards, indices };
+      game.jokerSelection = {
+        ownerId: owner.id,
+        targetId: guesser.id,
+        stage: "reveal",
+        selectedIndices: [],
+        cards: [],
+        indices: []
+      };
     }
   }
   return result;
@@ -534,12 +558,14 @@ function checkEliminationsAndWinner(room) {
 
 function scheduleNextTurn(room) {
   if (room.timer) clearTimeout(room.timer);
+  room.game.nextTurnAt = Date.now() + 3_000;
+  broadcastGame(room, room.game.phase);
   room.timer = setTimeout(() => {
     room.timer = null;
     if (room.status !== "playing") return;
     room.game.swapOwnerId = null;
     startNextTurn(room);
-  }, 4_000);
+  }, 3_000);
 }
 
 function startNextTurn(room) {
@@ -557,6 +583,8 @@ function startNextTurn(room) {
   game.guesses.clear();
   game.lastResult = null;
   game.swapOwnerId = null;
+  game.eliminated = [];
+  game.nextTurnAt = null;
   broadcastGame(room);
   scheduleDeadline(room);
 }
@@ -599,7 +627,7 @@ function resolveRound(room) {
   };
   game.tableCard = game.activeCard;
   game.phase = "result";
-  if (game.jokerSelection) game.phase = "joker-select";
+  if (game.jokerSelection) game.phase = "joker-reveal";
   if (!game.jokerSelection) checkEliminationsAndWinner(room);
   if (room.status === "playing") {
     broadcastGame(room, game.phase);
@@ -732,6 +760,37 @@ function handleRoomAction(peer, action) {
     game.swapOwnerId = null;
     game.lastResult.swappedWith = target.id;
     broadcastGame(room, "result");
+    return;
+  }
+  if (action.action === "use-luck") {
+    if (game.phase !== "guess" || game.turnPlayerId === player.id) throw new Error("A sorte só pode ser usada ao adivinhar.");
+    if (player.luck < 1 || (game.eliminated || []).length) throw new Error("Sorte indisponível.");
+    game.eliminated = shuffle(cardTypes.filter((type) => type !== game.activeCard)).slice(0, 2);
+    player.luck -= 1;
+    broadcastGame(room);
+    return;
+  }
+  if (action.action === "joker-reveal") {
+    const selection = game.jokerSelection;
+    const target = selection && game.players.get(selection.targetId);
+    if (
+      game.phase !== "joker-reveal"
+      || !selection
+      || selection.ownerId !== player.id
+      || !target
+      || !Number.isInteger(action.index)
+      || action.index < 0
+      || action.index >= target.hand.length
+      || selection.selectedIndices.includes(action.index)
+    ) throw new Error("Carta inválida para revelar.");
+    selection.selectedIndices.push(action.index);
+    if (selection.selectedIndices.length === Math.min(2, target.hand.length)) {
+      selection.indices = [...selection.selectedIndices];
+      selection.cards = selection.indices.map((index) => target.hand[index]);
+      selection.stage = "select";
+      game.phase = "joker-select";
+    }
+    broadcastGame(room);
     return;
   }
   if (action.action === "joker-pick") {
