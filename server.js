@@ -278,8 +278,8 @@ function startRoomGame(room) {
     roomId: room.id,
     players: players.map(lobbyPlayer)
   });
-  broadcastGame(room);
   scheduleDeadline(room);
+  broadcastGame(room);
   broadcastRooms();
   logEvent("room-started", { roomId: room.id, players: players.length });
 }
@@ -371,10 +371,11 @@ function scheduleDeadline(room) {
         if (owner?.alive && owner.hand.length) {
           const index = Math.floor(Math.random() * owner.hand.length);
           game.activeCard = owner.hand.splice(index, 1)[0];
+          game.tableCard = null;
           game.guesses.clear();
           game.phase = "guess";
-          broadcastGame(room);
           scheduleDeadline(room);
+          broadcastGame(room);
         }
       } else if (game.phase === "joker-reveal" || game.phase === "joker-select") {
         const selection = game.jokerSelection;
@@ -417,7 +418,7 @@ function scheduleDeadline(room) {
         }
         resolveOpening(room);
       } else if (game.phase === "guess") {
-        const available = cardTypes.filter((type) => type !== game.activeCard);
+        const available = cardTypes.filter((type) => !(game.eliminated || []).includes(type));
         for (const player of expected) {
           if (player.id !== game.turnPlayerId && !game.guesses.has(player.id)) {
             game.guesses.set(player.id, available[Math.floor(Math.random() * available.length)]);
@@ -550,10 +551,18 @@ function checkEliminationsAndWinner(room) {
   const game = room.game;
   if (!game || game.winnerId) return;
   for (const player of game.players.values()) {
-    if (player.alive && (player.hp <= 0 || player.hand.length === 0)) player.alive = false;
+    if (player.alive && player.hp <= 0) player.alive = false;
   }
   const alive = [...game.players.values()].filter((player) => player.alive);
-  if (alive.length <= 1) finishRoom(room, alive[0]?.peer || null);
+  if (alive.length <= 1) {
+    finishRoom(room, alive[0]?.peer || null);
+    return;
+  }
+  const owner = game.players.get(game.turnPlayerId);
+  const target = game.jokerSelection ? null : game.players.get(game.lastResult?.outcomes?.[0]?.guesserId);
+  if (owner?.alive && (owner.hand.length === 0 || (game.lastResult?.transferredCard && target?.hand.length === 0))) {
+    finishRoom(room, owner.peer);
+  }
 }
 
 function scheduleNextTurn(room) {
@@ -585,8 +594,8 @@ function startNextTurn(room) {
   game.swapOwnerId = null;
   game.eliminated = [];
   game.nextTurnAt = null;
-  broadcastGame(room);
   scheduleDeadline(room);
+  broadcastGame(room);
 }
 
 function resolveRound(room) {
@@ -630,9 +639,13 @@ function resolveRound(room) {
   if (game.jokerSelection) game.phase = "joker-reveal";
   if (!game.jokerSelection) checkEliminationsAndWinner(room);
   if (room.status === "playing") {
-    broadcastGame(room, game.phase);
-    if (game.phase === "result") scheduleNextTurn(room);
-    else scheduleDeadline(room);
+    if (game.phase === "result") {
+      broadcastGame(room, game.phase);
+      scheduleNextTurn(room);
+    } else {
+      scheduleDeadline(room);
+      broadcastGame(room, game.phase);
+    }
   }
 }
 
@@ -653,8 +666,8 @@ function resolveOpening(room) {
       game.activeCard = null;
       game.guesses.clear();
       game.lastResult = null;
-      broadcastGame(room);
       scheduleDeadline(room);
+      broadcastGame(room);
     }, 3_000);
     return;
   }
@@ -676,8 +689,8 @@ function resolveOpening(room) {
     game.opening = false;
     game.activeCard = null;
     game.guesses.clear();
-    broadcastGame(room);
     scheduleDeadline(room);
+    broadcastGame(room);
   }, 3_000);
 }
 
@@ -728,7 +741,6 @@ function handleRoomAction(peer, action) {
     game.phase = "guess";
     scheduleDeadline(room);
     broadcastGame(room);
-    scheduleDeadline(room);
     advanceIfNeeded(room);
     return;
   }
@@ -744,10 +756,10 @@ function handleRoomAction(peer, action) {
   if (action.action === "guess") {
     if (game.phase !== "guess" || game.turnPlayerId === player.id) throw new Error("Você não pode adivinhar nesta fase.");
     if (!cardTypes.includes(action.guess)) throw new Error("Palpite inválido.");
+    if ((game.eliminated || []).includes(action.guess)) throw new Error("Essa opção foi eliminada pela sorte.");
     if (game.guesses.has(player.id)) throw new Error("Seu palpite já foi registrado.");
     game.guesses.set(player.id, action.guess);
     broadcastGame(room);
-    scheduleDeadline(room);
     advanceIfNeeded(room);
     return;
   }
@@ -789,6 +801,7 @@ function handleRoomAction(peer, action) {
       selection.cards = selection.indices.map((index) => target.hand[index]);
       selection.stage = "select";
       game.phase = "joker-select";
+      scheduleDeadline(room);
     }
     broadcastGame(room);
     return;

@@ -32,6 +32,7 @@
   let publicId = null;
   const pendingMessages = [];
   let lastRoomResultId = "";
+  let lastRoomResultElement = null;
   const chatCards = {
     leao: ["🦁", "Leão"], coelho: ["🐇", "Coelho"], vaca: ["🐄", "Vaca"],
     peixe: ["🐟", "Peixe"], tigre: ["🐅", "Tigre"], macaco: ["🐒", "Macaco"],
@@ -104,6 +105,8 @@
 
   function clearChat() {
     chatMessages.replaceChildren();
+    lastRoomResultId = "";
+    lastRoomResultElement = null;
     chatPeerName.textContent = "Sala";
     setChatAvailability(false);
   }
@@ -116,35 +119,45 @@
     chatToggleButton.textContent = minimized ? "+" : "−";
   }
 
-  function appendChatMessage(nickname, text, ownMessage = false) {
-    const item = document.createElement("li");
-    item.className = nickname === "Sistema"
-      ? "chat-message chat-system-message"
-      : ownMessage ? "chat-message chat-message-own" : "chat-message";
-    const author = document.createElement("span");
-    author.className = "chat-author";
-    author.textContent = nickname === "Sistema" ? "Sistema:" : nickname;
-    const content = document.createElement("p");
-    content.textContent = text;
-    item.append(author, content);
+  function appendChatItem(item) {
     chatMessages.append(item);
     while (chatMessages.children.length > 100) chatMessages.firstElementChild.remove();
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  function logGameEvent(message) {
-    if (chatPanel.hidden) return;
-    if (typeof message === "string") appendChatMessage("Sistema", message);
-    else if (message?.kind === "system") appendChatMessage("Sistema", message.text);
+  function appendChatMessage(nickname, text, ownMessage = false, system = false) {
+    const item = document.createElement("li");
+    item.className = system
+      ? "chat-message chat-system-message"
+      : ownMessage ? "chat-message chat-message-own" : "chat-message";
+    const author = document.createElement("span");
+    author.className = "chat-author";
+    author.textContent = system ? "Sistema:" : nickname;
+    const content = document.createElement("p");
+    content.textContent = text;
+    item.append(author, content);
+    appendChatItem(item);
   }
 
-  function appendRoomResult(state) {
-    const result = state.lastResult;
-    if (!result || !chatCards[result.card]) return;
-    const resultId = `${state.round}:${result.card}:${result.ownerId}`;
-    if (resultId === lastRoomResultId) return;
-    lastRoomResultId = resultId;
-    const item = document.createElement("li");
+  function logGameEvent(message) {
+    if (chatPanel.hidden) return;
+    if (typeof message === "string") appendChatMessage("Sistema", message, false, true);
+    else if (message?.kind === "system") appendChatMessage("Sistema", message.text, false, true);
+    else if (message?.kind === "round-result") {
+      appendResultCard({
+        round: message.round,
+        cardType: message.cardType,
+        playedBy: message.playedBy,
+        guesses: [{ name: message.guesser, type: message.guess, correct: message.correct }],
+        attributes: message.attributes,
+        note: message.effectSummary
+      });
+    }
+  }
+
+  function appendResultCard(result, existingItem = null) {
+    if (!chatCards[result.cardType]) return null;
+    const item = existingItem || document.createElement("li");
     item.className = "chat-message chat-system-message chat-round-result-message";
     const author = document.createElement("span");
     author.className = "chat-author";
@@ -155,25 +168,30 @@
     heading.className = "chat-result-heading";
     const round = document.createElement("span");
     round.className = "chat-result-round";
-    round.textContent = `R${state.round}`;
+    round.textContent = `R${result.round}`;
     const title = document.createElement("strong");
     title.className = "chat-result-title";
-    title.textContent = `${chatCards[result.card][0]} ${chatCards[result.card][1]}`;
+    title.textContent = `${chatCards[result.cardType][0]} ${chatCards[result.cardType][1]}`;
     heading.append(round, title);
     const outcomes = document.createElement("div");
     outcomes.className = "chat-result-attributes";
-    for (const guesserId of Object.keys(result.guesses || {})) {
-      const player = state.players.find((candidate) => candidate.id === guesserId);
-      const outcome = result.outcomes?.find((candidate) => candidate.guesserId === guesserId);
-      if (!player || !outcome) continue;
+    if (result.playedBy) {
+      const owner = document.createElement("p");
+      owner.className = "chat-result-guesser";
+      owner.textContent = `${result.playedBy} jogou`;
+      outcomes.append(owner);
+    }
+    for (const guess of result.guesses || []) {
       const row = document.createElement("div");
       row.className = "chat-result-attribute";
       const label = document.createElement("span");
       label.className = "chat-result-player";
-      label.textContent = `${player.nickname} palpitou ${chatCards[result.guesses[guesserId]][1]}`;
+      label.textContent = chatCards[guess.type]
+        ? `${guess.name} palpitou ${chatCards[guess.type][1]}`
+        : `${guess.name} palpitou`;
       const status = document.createElement("strong");
-      status.className = outcome.correct ? "is-gain" : "is-loss";
-      status.textContent = outcome.correct ? "ACERTO" : "ERRO";
+      status.className = guess.correct ? "is-gain" : "is-loss";
+      status.textContent = guess.correct ? "ACERTO" : "ERRO";
       row.append(label, status);
       outcomes.append(row);
     }
@@ -194,10 +212,49 @@
       row.append(player, value, label);
       outcomes.append(row);
     }
+    if (result.note) {
+      const note = document.createElement("p");
+      note.className = "chat-result-note";
+      note.textContent = result.note;
+      outcomes.append(note);
+    } else if (!(result.attributes || []).length) {
+      const empty = document.createElement("span");
+      empty.className = "chat-result-empty";
+      empty.textContent = "Sem alterações de atributos.";
+      outcomes.append(empty);
+    }
     card.append(heading, outcomes);
-    item.append(author, card);
-    chatMessages.append(item);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    item.replaceChildren(author, card);
+    if (!existingItem) appendChatItem(item);
+    return item;
+  }
+
+  function appendRoomResult(state) {
+    const result = state.lastResult;
+    if (!result || !chatCards[result.card]) return;
+    const resultId = `${state.round}:${result.card}:${result.ownerId}`;
+    const owner = state.players.find((player) => player.id === result.ownerId);
+    const guesses = (result.outcomes || []).map((outcome) => ({
+      name: state.players.find((player) => player.id === outcome.guesserId)?.nickname,
+      type: result.guesses?.[outcome.guesserId],
+      correct: outcome.correct
+    })).filter((guess) => guess.name);
+    const notes = [];
+    if (result.transferredCard && chatCards[result.transferredCard]) {
+      notes.push(`Coringa levou ${chatCards[result.transferredCard][1]}.`);
+    }
+    if (result.swappedWith) notes.push("As mãos foram trocadas.");
+    const existing = resultId === lastRoomResultId && lastRoomResultElement?.isConnected
+      ? lastRoomResultElement : null;
+    lastRoomResultElement = appendResultCard({
+      round: state.round,
+      cardType: result.card,
+      playedBy: owner?.nickname,
+      guesses,
+      attributes: result.attributes,
+      note: notes.join(" ")
+    }, existing);
+    lastRoomResultId = resultId;
   }
 
   function renderRooms(rooms) {
@@ -267,7 +324,12 @@
     socket.addEventListener("message", (event) => handleServerMessage(JSON.parse(event.data)));
     socket.addEventListener("close", () => {
       setTopbarStatus("desconectado");
-      if (!activeRoom) setStatus("Conexão das salas encerrada.");
+      const message = activeRoom
+        ? "Conexão perdida. Volte ao menu para entrar novamente em uma sala."
+        : "Conexão das salas encerrada.";
+      setStatus(message);
+      logConnection(message);
+      if (activeRoom) logGameEvent(message);
     });
     socket.addEventListener("error", () => setStatus("Não foi possível conectar às salas."));
   }
@@ -280,6 +342,7 @@
     } else if (message.type === "lobby-update") {
       updateLobby(message.room);
     } else if (message.type === "room-started") {
+      lastRoomResultId = "";
       clearChat();
       chatPeerName.textContent = `${message.players.length} jogadores`;
       setChatAvailability(true);
@@ -291,7 +354,7 @@
       });
     } else if (message.type === "game-state") {
       publicId = message.state.you;
-      if (message.state.phase === "result") appendRoomResult(message.state);
+      if (["result", "finished"].includes(message.state.phase)) appendRoomResult(message.state);
       window.BlefeGame.applyRoomSnapshot(message.state);
     } else if (message.type === "room-chat") {
       appendChatMessage(message.from.nickname, message.text, message.from.id === publicId);
@@ -300,6 +363,7 @@
     } else if (message.type === "error") {
       setStatus(message.message);
       logConnection(message.message);
+      if (activeRoom) logGameEvent(message.message);
     }
   }
 

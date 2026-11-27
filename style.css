@@ -271,8 +271,8 @@ button { font: inherit; }
 
 .table-wrap {
   position: relative;
-  width: min(100%, calc(177.778svh - 145.778px));
-  aspect-ratio: 16 / 9;
+  width: min(100%, calc(166.667svh - 86.667px));
+  aspect-ratio: 5 / 3;
   flex: none;
   justify-self: center;
   overflow: hidden;
@@ -404,7 +404,7 @@ button { font: inherit; }
   z-index: 6;
   bottom: 5%;
   left: 50%;
-  width: min(300px, 34vw);
+  width: min(480px, 48%);
   height: clamp(110px, 18%, 165px);
   transform: translateX(-50%);
   display: flex;
@@ -725,6 +725,13 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 }
 
 .chat-message-own { align-self: flex-end; text-align: right; }
+.chat-system-message {
+  align-self: stretch;
+  padding: 8px;
+  border: 1px solid rgba(201, 239, 116, .28);
+  border-radius: 7px;
+  background: rgba(5, 15, 16, .55);
+}
 .chat-author { color: var(--mint); font-size: 10px; font-weight: 700; }
 .chat-message-own .chat-author { color: var(--lime); }
 .chat-system-message .chat-author { color: #f0d477; }
@@ -733,10 +740,6 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 .chat-round-result-message { max-width: 100%; align-self: stretch; }
 .chat-result-card {
   margin-top: 3px;
-  padding: 8px;
-  border: 1px solid rgba(201, 239, 116, .28);
-  border-radius: 7px;
-  background: rgba(5, 15, 16, .55);
 }
 
 .chat-result-heading { display: flex; align-items: center; gap: 6px; }
@@ -755,12 +758,13 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 .chat-result-guesser { margin: 5px 0; color: var(--muted); font-size: 10px; }
 .chat-result-attributes { display: grid; gap: 3px; }
 .chat-result-attribute { display: flex; align-items: baseline; gap: 5px; font-size: 10px; }
-.chat-result-player { overflow: hidden; color: #dce5dc; text-overflow: ellipsis; white-space: nowrap; }
+.chat-result-player { min-width: 0; color: #dce5dc; }
 .chat-result-attribute strong { margin-left: auto; font-size: 11px; }
 .chat-result-attribute strong.is-gain { color: #9ce8bd; }
 .chat-result-attribute strong.is-loss { color: #ff9a90; }
 .chat-result-label { color: var(--muted); }
 .chat-result-empty { color: var(--muted); font-size: 9px; }
+.chat-message .chat-result-note { color: #bac6bb; font-size: 10px; }
 
 .chat-form {
   flex: none;
@@ -796,7 +800,7 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .main-menu { min-height: 72vh; padding: 20px 4px; }
   .game-shell { gap: 0; padding: 2px 0 0; }
   .table-wrap {
-    width: min(100%, calc((100svh - 74px) * 780 / 1520));
+    width: 100%;
     aspect-ratio: 780 / 1520;
     margin: 0 auto;
     border-radius: 7px;
@@ -806,7 +810,7 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .turn-tool-button { min-height: 26px; padding: 0 7px; font-size: 8px; }
   .round-countdown { top: 9px; gap: 3px; padding: 5px 8px; font-size: 9px; }
   .round-countdown strong { font-size: 15px; }
-  .action-area { bottom: 5%; left: 50%; width: min(220px, 68vw); height: clamp(82px, 17%, 135px); gap: 10px; padding: 14px 26px 6px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent); }
+  .action-area { bottom: 5%; left: 50%; width: min(300px, 76%); height: clamp(82px, 17%, 135px); gap: 10px; padding: 14px 26px 6px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent); }
   .guess-card { width: clamp(38px, 10.5vw, 52px); min-width: clamp(38px, 10.5vw, 52px); height: clamp(62px, 17.5vw, 78px); gap: 3px; padding: 5px 2px 8px; border-radius: 6px; }
   .guess-card-emoji { font-size: clamp(16px, 5vw, 22px); }
   .guess-card-name { font-size: clamp(7px, 2vw, 9px); }
@@ -877,5 +881,5 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-delay: 0ms !important; }
 }

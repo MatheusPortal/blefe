@@ -17,9 +17,10 @@ npm ci
 npm start
 ```
 
-Abra `http://localhost:10000` em dois a quatro navegadores ou dispositivos e escolha **Jogar online**. Informe um nickname, crie uma sala ou entre em uma sala disponível. O anfitrião inicia quando houver pelo menos dois jogadores.
+Abra `http://localhost:10000` em dois navegadores ou dispositivos e escolha **Jogar online**. Informe um nickname, crie uma sala ou entre em uma sala disponível. O anfitrião inicia quando os dois jogadores estiverem na sala.
 
 Para validar a sintaxe dos arquivos JavaScript, execute `npm run check`.
+Para testar os cards do chat e uma partida online completa, execute `node --test`.
 
 ## Regras desta versão
 
@@ -28,9 +29,10 @@ Para validar a sintaxe dos arquivos JavaScript, execute `npm run check`.
 - No modo online, um jogador joga por turno e todos os demais adivinham simultaneamente.
 - Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ver o efeito e clique para jogar; ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
 - O cronômetro e as opções de palpite aparecem dentro da mesa; vida e cartas são mostradas em indicadores circulares compactos.
-- As opções de palpite formam um leque de cartas. O log da partida fica dentro do tabuleiro e, no modo offline, funciona sem envio de mensagens.
+- As opções de palpite formam um leque de cartas. O chat exibe eventos do sistema e resultados das cartas em cards; no modo offline, funciona como log sem envio de mensagens.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
-- Cada carta tocada emite um som curto, com controle para ligar ou desligar o áudio. Ganhos e perdas de vida, sorte, escudos e cartas são destacados com animações junto aos indicadores dos jogadores.
+- As jogadas emitem o mesmo som, sem revelar a identidade da carta antes do palpite; o áudio pode ser desligado. Ganhos e perdas de vida, sorte, escudos e cartas são destacados com animações junto aos indicadores dos jogadores.
+- No online, a mão adversária permanece no topo, inclusive durante a seleção de cartas do Coringa. Em telas pequenas, a mesa ocupa a largura disponível e a página pode ser rolada.
 - Na distribuição inicial, cada jogador pode receber no máximo 3 cartas do mesmo animal. Troca e Coringa são únicas no baralho.
 - Cartas bônus são compradas apenas do monte restante das 42 cartas. Quando ele acaba, não surgem cartas novas.
 - Cartas jogadas não voltam à mão.
