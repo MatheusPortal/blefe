@@ -5,31 +5,31 @@
   const SPECIAL_CARDS = ["troca", "coringa"];
   const COMMON_CARDS = CARD_TYPES.filter((type) => !SPECIAL_CARDS.includes(type));
   const COMMON_CARD_COUNTS = {
-    leao: 4,
-    coelho: 4,
-    vaca: 4,
-    peixe: 4,
-    tigre: 4,
-    macaco: 4,
-    elefante: 4,
-    tartaruga: 4
+    leao: 5,
+    coelho: 5,
+    vaca: 5,
+    peixe: 5,
+    tigre: 5,
+    macaco: 5,
+    elefante: 5,
+    tartaruga: 5
   };
   const COMMON_DECK_SIZE = Object.values(COMMON_CARD_COUNTS).reduce((sum, count) => sum + count, 0);
   const DECK_SIZE = COMMON_DECK_SIZE + SPECIAL_CARDS.length;
   const INITIAL_HAND_SIZE = 7;
-  const MAX_CARDS_PER_SPECIES = 3;
+  const MAX_INITIAL_CARDS_PER_SPECIES = 3;
   const MAX_LUCK = 5;
   const CARDS = {
-    leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro: perde 2 vidas e compra 1 carta; quem jogou ganha 1 sorte." },
-    coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa", effect: "Erro: compra 3 cartas; quem jogou ganha 2 de sorte. Acerto: +1 sorte." },
-    vaca: { name: "Vaca", emoji: "🐄", color: "#f0d477", effect: "Erro: compra 2 cartas; quem jogou ganha 2 escudos. Acerto: +1 sorte." },
-    peixe: { name: "Peixe", emoji: "🐟", color: "#7ec9e8", effect: "Erro: compra 3 cartas; quem jogou ganha 2 de sorte. Acerto: +1 vida." },
-    tigre: { name: "Tigre", emoji: "🐅", color: "#ec8b51", effect: "Erro: perde 1 vida e compra 2 cartas. Acerto: +1 vida ou escudo." },
-    macaco: { name: "Macaco", emoji: "🐒", color: "#c49668", effect: "Erro: compra 4 cartas; quem jogou ganha 3 de sorte. Acerto: +1 sorte." },
-    elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro: perde 2 vidas e compra 2 cartas; quem jogou ganha 1 escudo." },
-    tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Erro: compra 1 carta e perde 1 escudo; quem jogou ganha 1 escudo." },
-    troca: { name: "Troca", emoji: "🔄", color: "#d9c477", effect: "Erro: quem jogou pode trocar as mãos durante as 2 rodadas seguintes." },
-    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Erro: quem jogou ganha 1 vida e revela até 2 cartas da mão adversária." }
+    leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro — adversário: −2 vidas, +1 carta; quem jogou: +1 sorte." },
+    coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa", effect: "Erro — adversário: +3 cartas; quem jogou: +2 sorte. Acerto — quem adivinhou: +1 sorte." },
+    vaca: { name: "Vaca", emoji: "🐄", color: "#f0d477", effect: "Erro — adversário: +2 cartas; quem jogou: +2 escudos. Acerto — quem adivinhou: +1 sorte." },
+    peixe: { name: "Peixe", emoji: "🐟", color: "#7ec9e8", effect: "Erro — adversário: +2 cartas, −3 escudos; quem jogou: +1 sorte, +1 vida. Acerto — quem adivinhou: +1 vida." },
+    tigre: { name: "Tigre", emoji: "🐅", color: "#ec8b51", effect: "Erro — adversário: −1 vida, +2 cartas. Acerto — quem adivinhou: +1 vida ou, se cheia, +1 escudo." },
+    macaco: { name: "Macaco", emoji: "🐒", color: "#c49668", effect: "Erro — adversário: −3 de dano, +1 carta; quem jogou: +2 escudos. Acerto — quem adivinhou: +1 sorte." },
+    elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro — adversário: −1 vida, −2 escudos. Acerto — quem adivinhou: +1 escudo." },
+    tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Erro — adversário: +1 carta, −1 escudo; quem jogou: +1 escudo. Acerto — quem adivinhou: +1 vida ou, se cheia, +1 escudo." },
+    troca: { name: "Troca", emoji: "🔄", color: "#d9c477", effect: "Erro — quem jogou: pode trocar as mãos por 2 rodadas." },
+    coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Erro — quem jogou: +1 vida, +1 escudo, revela 2 cartas e transfere 1 delas para si." }
   };
   const TURN_SECONDS = 40;
   const RESULT_PAUSE_SECONDS = 4;
@@ -80,6 +80,8 @@
   let onlineRole = null;
   let onlineSession = null;
   let onlineNames = null;
+  let roomSession = null;
+  let roomState = null;
   let systemEventSequence = 0;
   let lastSystemEventId = 0;
   let swapRequestPending = false;
@@ -177,6 +179,8 @@
     onlineRole = null;
     onlineSession = null;
     onlineNames = null;
+    roomSession = null;
+    roomState = null;
     mainMenu.hidden = false;
     gameShell.hidden = true;
     leaveGameButton.hidden = true;
@@ -211,6 +215,37 @@
     swapRequestPending = false;
     state = null;
     showGameView();
+  }
+
+  function startOnlineRoom(session) {
+    clearGameTimers();
+    onlineRole = "room";
+    onlineSession = null;
+    onlineNames = null;
+    roomSession = session;
+    roomState = null;
+    state = null;
+    showGameView();
+  }
+
+  function applyRoomSnapshot(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.players) || !snapshot.you) return false;
+    onlineRole = "room";
+    roomState = snapshot;
+    state = null;
+    if (gameShell.hidden) showGameView();
+    render();
+    return true;
+  }
+
+  function playRoomCard(index) {
+    if (
+      onlineRole !== "room"
+      || roomState?.phase !== "play"
+      || roomState.turnPlayerId !== roomState.you
+      || !getRoomPlayer()?.hand?.[index]
+    ) return false;
+    return roomSession?.sendAction({ action: "play", cardIndex: index }) !== false;
   }
 
   function sendOnlineAction(action, type, index) {
@@ -262,7 +297,7 @@
     const speciesCounts = Object.fromEntries(COMMON_CARDS.map((type) => [type, 0]));
     while (hand.length < INITIAL_HAND_SIZE && deck.length > 0) {
       const type = deck.pop();
-      if (!SPECIAL_CARDS.includes(type) && speciesCounts[type] >= MAX_CARDS_PER_SPECIES) {
+      if (!SPECIAL_CARDS.includes(type) && speciesCounts[type] >= MAX_INITIAL_CARDS_PER_SPECIES) {
         discard.push(type);
         continue;
       }
@@ -415,6 +450,7 @@
 
   function startGame() {
     clearGameTimers();
+    if (!onlineRole) window.BlefeOnline?.showOfflineLog();
     hoverCard = -1;
     hoverOpponentCard = -1;
     swapRequestPending = false;
@@ -509,6 +545,11 @@
     return state.extraDeck.pop() || null;
   }
 
+  function drawSetupCard() {
+    const cardIndex = state.extraDeck.findLastIndex((type) => COMMON_CARDS.includes(type));
+    return cardIndex >= 0 ? state.extraDeck.splice(cardIndex, 1)[0] : null;
+  }
+
   function beginSetupChallenge() {
     const deckCounts = Object.fromEntries(COMMON_CARDS.map((type) => [type, 0]));
     for (const type of state.extraDeck) deckCounts[type] += 1;
@@ -518,7 +559,7 @@
       totalCards ? deckCounts[type] / totalCards : 1 / COMMON_CARDS.length
     ]));
     state.setupGuesses.ai = isOnlineHost() ? null : chooseGuess(probabilities, false, COMMON_CARDS);
-    state.setupCard = drawExtraCard();
+    state.setupCard = drawSetupCard();
     state.phase = "setup-guess";
     state.message = "Adivinhe a carta para disputar a iniciativa.";
     state.log = "Palpite a carta central.";
@@ -584,21 +625,10 @@
       render();
       aiTimeout = window.setTimeout(resolveSetupChallenge, 650);
     } else if (state.phase === "player-joker-select" || state.phase === "ai-joker-select") {
-      const target = state.pendingJokerReveal && state.players[state.pendingJokerReveal.target];
-      if (!target || target.hand.length === 0) {
-        finishJokerReveal([]);
-        return;
-      }
       const selected = state.pendingJokerReveal.selectedIndices;
-      const needed = Math.min(2, target.hand.length);
-      const remaining = shuffle(Array.from({ length: target.hand.length }, (_, index) => index)
-        .filter((index) => !selected.includes(index)))
-        .slice(0, needed - selected.length);
-      if (state.phase === "player-joker-select") {
-        remaining.forEach(submitJokerReveal);
-      } else {
-        finishJokerReveal([...selected, ...remaining]);
-      }
+      const index = selected[Math.floor(Math.random() * selected.length)];
+      if (state.phase === "player-joker-select") submitJokerReveal(index);
+      else if (isOnlineHost()) finishJokerReveal(index);
     } else if (state.phase === "player-play") {
       const hand = state.players.player.hand;
       const type = hand[Math.floor(Math.random() * hand.length)];
@@ -735,10 +765,6 @@
       if (state.extraDeck.length === 0) break;
       const type = drawExtraCard();
       if (!type) break;
-      if (type !== "coringa" && player.hand.filter((card) => card === type).length >= MAX_CARDS_PER_SPECIES) {
-        state.extraDiscard.push(type);
-        continue;
-      }
       player.hand.push(type);
       drawn.push(type);
       if (type === "coringa") state.jokerDistributed = true;
@@ -829,17 +855,24 @@
         return `${damage}; compra ${draw}`;
       }
       case "peixe": {
-        const draw = describeCardDraw(drawBonusCards(guesserKey, 3));
-        return `compra ${draw}; ${owner.name} ${gainLuck(owner, 2)}`;
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 2));
+        const lostShields = Math.min(3, guesser.shields);
+        guesser.shields -= lostShields;
+        const healed = Math.min(1, 5 - owner.hp);
+        owner.hp += healed;
+        return `compra ${draw}; −${lostShields} ${lostShields === 1 ? "escudo" : "escudos"}; ${owner.name} ${gainLuck(owner, 1)}, +${healed} vida`;
       }
       case "macaco": {
-        const draw = describeCardDraw(drawBonusCards(guesserKey, 4));
-        return `compra ${draw}; ${owner.name} ${gainLuck(owner, 3)}`;
+        const damage = describeDamage(applyDamage(guesser, 3));
+        const draw = describeCardDraw(drawBonusCards(guesserKey, 1));
+        return `${damage}; compra ${draw}; ${owner.name} ${gainShield(owner, 2)}`;
       }
       case "elefante": {
-        const damage = describeDamage(applyDamage(guesser, 2));
-        const draw = describeCardDraw(drawBonusCards(guesserKey, 2));
-        return `${damage}; compra ${draw}; ${owner.name} ${gainShield(owner, 1)}`;
+        const lostLife = Math.min(1, guesser.hp);
+        const lostShields = Math.min(2, guesser.shields);
+        guesser.hp -= lostLife;
+        guesser.shields -= lostShields;
+        return `−${lostLife} vida; −${lostShields} ${lostShields === 1 ? "escudo" : "escudos"}`;
       }
       case "vaca": {
         const draw = describeCardDraw(drawBonusCards(guesserKey, 2));
@@ -858,7 +891,8 @@
       case "coringa": {
         const healed = Math.min(1, 5 - owner.hp);
         owner.hp += healed;
-        return `${owner.name} +${healed} vida; pode revelar até 2 cartas`;
+        owner.shields += 1;
+        return `${owner.name} +${healed} vida, +1 escudo; pode revelar 2 cartas e levar 1`;
       }
       case "troca":
         state.swapAbility = { owner: ownerKey, expiresAfterRound: state.round + 2 };
@@ -960,8 +994,13 @@
     resultAnimationFrame = window.requestAnimationFrame(drawFrame);
   }
 
-  function useSwapHands() {
-    if (!isSwapAvailable("player") || swapRequestPending) return;
+  function useSwapHands(event) {
+    if (event && event.isTrusted === false) return;
+    if (roomState && onlineRole === "room") {
+      if (roomState.swapOwnerId === roomState.you) roomSession?.sendAction({ action: "swap" });
+      return;
+    }
+    if (!state || !isSwapAvailable("player") || swapRequestPending || !["player-play", "player-guess", "ai-play", "ai-guess", "result"].includes(state.phase)) return;
     if (isOnlineGuest()) {
       if (!sendOnlineAction("swap-hands")) return;
       swapRequestPending = true;
@@ -1234,14 +1273,13 @@
     const needsJokerReveal = !correct
       && actualType === "coringa"
       && guesser.hand.length > 0
-      && guesser.hp > 0
-      && playedBy.hand.length > 0;
+      && guesser.hp > 0;
     if (!needsJokerReveal) recordResolvedGuess(state.lastReveal);
 
     if (guesser.hp <= 0) {
       guesser.hp = 0;
       endGame(owner, `${playedBy.name} venceu · vida zerada`);
-    } else if (playedBy.hand.length === 0) {
+    } else if (playedBy.hand.length === 0 && !needsJokerReveal) {
       endGame(owner, `${playedBy.name} venceu · sem cartas`);
     }
 
@@ -1257,43 +1295,40 @@
   }
 
   function beginJokerReveal(ownerKey, targetKey) {
-    state.pendingJokerReveal = { owner: ownerKey, target: targetKey, selectedIndices: [] };
+    const target = state.players[targetKey];
+    const selectedIndices = shuffle(Array.from({ length: target.hand.length }, (_, index) => index))
+      .slice(0, Math.min(2, target.hand.length));
+    state.pendingJokerReveal = {
+      owner: ownerKey,
+      target: targetKey,
+      selectedIndices,
+      revealedCards: selectedIndices.map((index) => target.hand[index])
+    };
+    state.lastReveal.revealedCards = [...state.pendingJokerReveal.revealedCards];
     if (ownerKey === "ai" && !isOnlineHost()) {
       state.phase = "ai-joker-select";
-      state.message = "O Coringa revela duas cartas...";
-      const target = state.players[targetKey];
-      const indices = shuffle(Array.from({ length: target.hand.length }, (_, index) => index))
-        .slice(0, Math.min(2, target.hand.length));
-      finishJokerReveal(indices);
+      finishJokerReveal(selectedIndices[Math.floor(Math.random() * selectedIndices.length)]);
       return;
     }
     state.phase = ownerKey === "player" ? "player-joker-select" : "ai-joker-select";
     state.message = ownerKey === "player"
-      ? "Clique em até duas cartas da mão adversária."
-      : `Aguardando ${state.players.ai.name} selecionar cartas.`;
-    recordSystemEvent(`${state.players[ownerKey].name}: clique em até duas cartas da mão adversária para revelar.`);
+      ? "Escolha uma das duas cartas reveladas."
+      : `Aguardando ${state.players.ai.name} escolher uma carta.`;
+    recordSystemEvent(`${state.players[ownerKey].name}: escolha uma das cartas reveladas pelo Coringa.`);
     beginTimedPhase();
     render();
   }
 
   function submitJokerReveal(index) {
     if (state.phase !== "player-joker-select" || !state.pendingJokerReveal) return;
-    const target = state.players[state.pendingJokerReveal.target];
-    if (!Number.isInteger(index) || index < 0 || index >= target.hand.length) return;
-    const selected = state.pendingJokerReveal.selectedIndices;
-    if (selected.includes(index) || selected.length >= Math.min(2, target.hand.length)) return;
+    if (!state.pendingJokerReveal.selectedIndices.includes(index)) return;
     if (isOnlineGuest()) {
       if (!sendOnlineAction("joker-reveal", undefined, index)) return;
     }
-    selected.push(index);
-    if (selected.length >= Math.min(2, target.hand.length)) {
-      if (!isOnlineGuest()) finishJokerReveal(selected);
-      else {
-        state.message = "Duas cartas selecionadas.";
-        render();
-      }
+    if (!isOnlineGuest()) {
+      finishJokerReveal(index);
     } else {
-      state.message = "Escolha mais uma carta.";
+      state.message = "Carta escolhida. Aguardando confirmação...";
       render();
     }
   }
@@ -1310,31 +1345,43 @@
       !Number.isInteger(index)
       || index < 0
       || index >= target.hand.length
-      || selected.includes(index)
-      || selected.length >= Math.min(2, target.hand.length)
+      || !selected.includes(index)
     ) return;
-    selected.push(index);
-    if (selected.length >= Math.min(2, target.hand.length)) finishJokerReveal(selected);
-    else render();
+    finishJokerReveal(index);
   }
 
-  function finishJokerReveal(indices) {
+  function finishJokerReveal(index) {
     if (!state.pendingJokerReveal || !state.lastReveal) return;
     window.clearInterval(clockInterval);
-    const target = state.players[state.pendingJokerReveal.target];
-    const revealedCards = Array.isArray(indices)
-      ? indices.filter((index) => Number.isInteger(index) && index >= 0 && index < target.hand.length)
-        .slice(0, 2)
-        .map((index) => target.hand[index])
-      : [];
+    const { owner, target: targetKey, selectedIndices, revealedCards } = state.pendingJokerReveal;
+    const target = state.players[targetKey];
+    const previousAttributes = {
+      player: getPlayerAttributes(state.players.player),
+      ai: getPlayerAttributes(state.players.ai)
+    };
+    const card = selectedIndices.includes(index) ? target.hand.splice(index, 1)[0] : null;
+    if (card) state.players[owner].hand.push(card);
+    state.aiHasJoker = state.players.ai.hand.includes("coringa");
+    state.attributeAnimations = createAttributeAnimations(previousAttributes);
+    animateAttributeChanges();
     state.lastReveal.revealedCards = revealedCards;
-    state.lastReveal.summary = `Coringa revelou ${revealedCards.length} ${revealedCards.length === 1 ? "carta" : "cartas"}.`;
+    state.lastReveal.summary = card
+      ? `Coringa revelou ${revealedCards.length} cartas; ${state.players[owner].name} levou ${CARDS[card].name}.`
+      : "O Coringa não encontrou uma carta para levar.";
+    state.lastReveal.attributes.push(
+      ...(card ? [
+        { playerName: target.name, attribute: "cards", value: -1 },
+        { playerName: state.players[owner].name, attribute: "cards", value: 1 }
+      ] : [])
+    );
     state.message = state.lastReveal.summary;
     state.log = state.message;
     recordResolvedGuess(state.lastReveal);
-    recordSystemEvent(`Coringa revelou ${revealedCards.length} cartas da mão adversária.`);
+    recordSystemEvent(state.lastReveal.summary);
     state.pendingJokerReveal = null;
     state.phase = "result";
+    if (target.hand.length === 0) endGame(owner, `${state.players[owner].name} venceu · adversário sem cartas`);
+    else if (state.players[owner].hand.length === 0) endGame(owner, `${state.players[owner].name} venceu · sem cartas`);
     render();
     if (!state.gameOver) beginRoundPause(advanceAfterResult);
   }
@@ -1398,11 +1445,6 @@
 
   function startAiTurn() {
     if (state.gameOver) return;
-    if (
-      !onlineRole
-      && isSwapAvailable("ai")
-      && state.players.ai.hand.length < state.players.player.hand.length
-    ) exchangeHands("ai");
     state.guesses = {};
     state.lastReveal = null;
     state.pauseSeconds = 0;
@@ -1461,6 +1503,10 @@
   }
 
   function render() {
+    if (onlineRole === "room") {
+      renderRoom();
+      return;
+    }
     if (!state) return;
     drawTable();
     updateTimer();
@@ -1490,6 +1536,13 @@
   }
 
   function updateTurnTools() {
+    if (roomState && onlineRole === "room") {
+      timer.hidden = true;
+      useLuckButton.hidden = true;
+      swapHandsButton.hidden = roomState.swapOwnerId !== roomState.you;
+      swapHandsButton.disabled = false;
+      return;
+    }
     useLuckButton.hidden = state.phase !== "player-guess";
     useLuckButton.disabled = state.players.player.luck < 1 || state.hintUsed;
     useLuckButton.textContent = `✦ Usar sorte (${state.players.player.luck})`;
@@ -1542,8 +1595,6 @@
       }
     }
     if (snapshot.lastReveal) {
-      const owner = state.lastReveal.owner;
-      if (owner !== "ai") delete snapshot.lastReveal.revealedCards;
       snapshot.lastReveal.owner = snapshot.lastReveal.owner === "player" ? "ai" : "player";
       snapshot.lastReveal.guesser = snapshot.lastReveal.guesser === "player" ? "ai" : "player";
     }
@@ -1686,7 +1737,6 @@
       && Array.isArray(player.hand)
       && player.hand.length <= 40
       && player.hand.every(validCard)
-      && COMMON_CARDS.every((type) => player.hand.filter((card) => card === type).length <= MAX_CARDS_PER_SPECIES)
       && SPECIAL_CARDS.every((type) => player.hand.filter((card) => card === type).length <= 1)
     );
     const validGuessSet = (guesses) => (
@@ -1722,6 +1772,9 @@
       || !["player", "ai"].includes(snapshot.pendingJokerReveal.target)
       || !Array.isArray(snapshot.pendingJokerReveal.selectedIndices)
       || snapshot.pendingJokerReveal.selectedIndices.length > 2
+      || !Array.isArray(snapshot.pendingJokerReveal.revealedCards)
+      || snapshot.pendingJokerReveal.revealedCards.length !== snapshot.pendingJokerReveal.selectedIndices.length
+      || !snapshot.pendingJokerReveal.revealedCards.every((type) => CARD_TYPES.includes(type))
       || new Set(snapshot.pendingJokerReveal.selectedIndices).size !== snapshot.pendingJokerReveal.selectedIndices.length
       || !snapshot.pendingJokerReveal.selectedIndices.every((index) => (
         Number.isInteger(index)
@@ -1809,6 +1862,16 @@
   }
 
   function renderActions() {
+    if (roomState && onlineRole === "room") {
+      actionArea.replaceChildren();
+      actionRenderKey = "";
+      if (roomState.phase === "guess" && roomState.turnPlayerId !== roomState.you && !roomState.guessed) {
+        CARD_TYPES.forEach((type, index) => {
+          addGuessButton(type, () => roomSession?.sendAction({ action: "guess", guess: type }), index, CARD_TYPES.length);
+        });
+      }
+      return;
+    }
     const renderKey = `${state.phase}:${state.eliminated.join(",")}:${actionArea.clientWidth}`;
     if (renderKey === actionRenderKey) return;
     actionRenderKey = renderKey;
@@ -1839,11 +1902,6 @@
     name.className = "guess-card-name";
     name.textContent = CARDS[type].name;
     button.append(emoji, name);
-    const arcPosition = count > 1 ? (index / (count - 1)) * 2 - 1 : 0;
-    const fanSpread = actionArea.clientWidth * (isMobileCanvas() ? 0.36 : 0.4);
-    button.style.setProperty("--fan-x", `${arcPosition * fanSpread}px`);
-    button.style.setProperty("--fan-y", `${Math.abs(arcPosition) * 14}px`);
-    button.style.setProperty("--fan-angle", `${arcPosition * 24}deg`);
     button.style.setProperty("--fan-z", String(index + 1));
     button.style.setProperty("--card-accent", CARDS[type].color);
     button.addEventListener("click", onClick);
@@ -1859,7 +1917,140 @@
     timer.hidden = !timedPhases.includes(state.phase);
   }
 
+  function getRoomPlayer() {
+      return roomState.players.find((player) => player.id === roomState.you);
+  }
+
+  function getRoomOpponents() {
+      return roomState.players.filter((player) => player.id !== roomState.you);
+  }
+
+  function renderRoom() {
+      if (!roomState) return;
+      drawTable();
+      roundCountdown.hidden = true;
+      timer.hidden = !Number.isInteger(roomState.seconds);
+      timerValue.textContent = String(roomState.seconds ?? 0);
+      timer.classList.toggle("is-low", (roomState.seconds ?? 0) <= 10);
+      useLuckButton.hidden = true;
+      swapHandsButton.hidden = roomState.swapOwnerId !== roomState.you;
+      tableOverlay.hidden = roomState.phase !== "finished";
+      const winner = roomState.players.find((player) => player.id === roomState.winnerId);
+      tableResult.textContent = winner ? `${winner.nickname} venceu a partida!` : "";
+      tableRestartButton.hidden = true;
+      tableFooter.hidden = roomState.phase === "finished";
+      restartButton.hidden = true;
+      const own = getRoomPlayer();
+      actionArea.hidden = !(roomState.phase === "guess"
+        && roomState.turnPlayerId !== roomState.you
+        && !roomState.guessed
+        && own && !own.eliminated);
+      gameShell.classList.toggle("is-choosing", !actionArea.hidden);
+      renderActions();
+      const owner = roomState.players.find((player) => player.id === roomState.turnPlayerId);
+      canvas.setAttribute("aria-label", roomState.phase === "play"
+        ? `${roomState.turnPlayerId === roomState.you ? "Sua vez" : `Vez de ${owner?.nickname || "jogador"}`}. Rodada ${roomState.round}.`
+        : `${roomState.round}: ${roomState.phase === "guess" ? "adivinhem a carta" : "resultado"}.`);
+  }
+
+  function drawRoomTable(ctx) {
+      const mobile = isMobileCanvas();
+      const width = canvasWidth;
+      const height = canvasHeight;
+      ctx.clearRect(0, 0, width, height);
+      const felt = ctx.createLinearGradient(0, 0, width, height);
+      felt.addColorStop(0, "#245c4d");
+      felt.addColorStop(1, "#12362f");
+      ctx.fillStyle = felt;
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = "rgba(207, 231, 183, .24)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(width / 2, height / 2, mobile ? width * .45 : width * .43, mobile ? height * .45 : height * .39, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const own = getRoomPlayer();
+      const opponents = getRoomOpponents();
+      const positions = mobile
+        ? [{ x: 150, y: 95 }, { x: 630, y: 95 }, { x: 690, y: 300 }]
+        : [{ x: 250, y: 88 }, { x: 550, y: 74 }, { x: 850, y: 88 }];
+      opponents.forEach((player, index) => {
+        if (!positions[index]) return;
+        drawPlayerBadge(ctx, positions[index].x, positions[index].y, {
+          ...player,
+          hand: Array(player.handCount || 0).fill(null)
+        }, `${player.nickname}${roomState.turnPlayerId === player.id ? " · JOGA" : ""}`, false, mobile);
+      });
+      if (own) {
+        drawPlayerBadge(ctx, mobile ? 90 : 88, mobile ? 1410 : 568, {
+          ...own,
+          hand: own.hand || []
+        }, `${own.nickname || "VOCÊ"}${own.eliminated ? " · FORA" : ""}`, true, mobile);
+      }
+
+      const activeOwner = roomState.players.find((player) => player.id === roomState.turnPlayerId);
+      const centerY = mobile ? 650 : 326;
+      drawCard(ctx, width / 2 - (mobile ? 62 : 50), centerY - (mobile ? 88 : 72),
+        roomState.activeCard, mobile ? 124 : 100, mobile ? 176 : 144);
+      ctx.fillStyle = "#dce9d7";
+      ctx.textAlign = "center";
+      ctx.font = `${mobile ? 15 : 10}px Consolas, monospace`;
+      ctx.fillText(
+        roomState.phase === "play"
+          ? `${activeOwner?.nickname || "Jogador"} joga`
+          : roomState.phase === "guess" ? `Todos adivinham · ${roomState.guessCount || 0} enviados`
+            : roomState.phase === "finished" ? "PARTIDA ENCERRADA" : `Rodada ${roomState.round} · resultado`,
+        width / 2,
+        centerY + (mobile ? 120 : 96)
+      );
+
+      if (own && !own.eliminated && roomState.phase !== "guess") drawRoomHand(ctx, own.hand || []);
+      if (roomState.lastResult) {
+        ctx.fillStyle = "rgba(8,20,20,.75)";
+        roundRect(ctx, mobile ? 165 : 350, centerY - (mobile ? 245 : 170), mobile ? 450 : 400, mobile ? 72 : 52, 9);
+        ctx.fill();
+        ctx.fillStyle = roomState.lastResult.ownerId === roomState.you ? "#c9ef74" : "#e5eddf";
+        ctx.font = `bold ${mobile ? 16 : 11}px 'Segoe UI', sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText(`${CARDS[roomState.lastResult.card].emoji} ${CARDS[roomState.lastResult.card].name}`, width / 2, centerY - (mobile ? 218 : 148));
+      }
+  }
+
+  function getRoomCardLayouts(hand) {
+      const mobile = isMobileCanvas();
+      const count = hand.length;
+      const spacing = count > 1 ? Math.min(mobile ? 72 : 70, (mobile ? 500 : 540) / (count - 1)) : 0;
+      const startX = canvasWidth / 2 - ((count - 1) * spacing) / 2;
+      return hand.map((type, index) => ({
+        index,
+        type,
+        x: startX + index * spacing,
+        y: mobile ? 1180 + Math.abs(index - (count - 1) / 2) * 2 : 536 + Math.abs(index - (count - 1) / 2) * 2,
+        angle: count > 1 ? ((index / (count - 1)) * 2 - 1) * .34 : 0
+      }));
+  }
+
+  function drawRoomHand(ctx, hand) {
+      const layouts = getRoomCardLayouts(hand);
+      const canPlay = roomState.phase === "play" && roomState.turnPlayerId === roomState.you;
+      for (const layout of layouts) {
+        const hovered = canPlay && layout.index === hoverCard;
+        drawCard(ctx, layout.x - CARD_WIDTH / 2, layout.y - CARD_HEIGHT / 2 - (hovered ? 15 : 0),
+          layout.type, CARD_WIDTH, CARD_HEIGHT, layout.angle, hovered);
+      }
+      if (hand.length > 0) {
+        ctx.fillStyle = "rgba(226,238,221,.76)";
+        ctx.font = `${isMobileCanvas() ? 14 : 9}px Consolas, monospace`;
+        ctx.textAlign = "center";
+        ctx.fillText(canPlay ? "SUA VEZ · CLIQUE PARA JOGAR" : "SUA MÃO", canvasWidth / 2, isMobileCanvas() ? canvasHeight - 18 : 644);
+      }
+    }
+
   function drawTable() {
+    if (roomState && onlineRole === "room") {
+      drawRoomTable(context);
+      return;
+    }
     const ctx = context;
     if (isMobileCanvas()) {
       drawMobileTable(ctx);
@@ -1909,9 +2100,6 @@
     drawAttributeAnimations(ctx);
     drawVisualEffect(ctx);
 
-    ctx.fillStyle = "rgba(233, 243, 224, .66)";
-    ctx.font = "10px Consolas, monospace";
-    ctx.textAlign = "center";
     const phaseText = state.phase === "setup-wait"
       ? "AGUARDANDO ADVERSÁRIO"
       : ["setup-guess", "setup-revealing", "setup-result", "dice-roll"].includes(state.phase)
@@ -1925,7 +2113,7 @@
                   : state.phase === "ai-guess" ? "AGUARDANDO PALPITE"
                     : "AGUARDANDO ADVERSÁRIO"
                 : "A IA PENSA";
-    ctx.fillText(phaseText, width / 2, 250);
+    drawPhaseLabel(ctx, phaseText, width / 2, 250, false);
 
     if (state.phase === "dice-roll") drawDice(ctx);
 
@@ -1981,9 +2169,6 @@
     drawAttributeAnimations(ctx);
     drawVisualEffect(ctx);
 
-    ctx.fillStyle = "rgba(233, 243, 224, .72)";
-    ctx.font = "16px Consolas, monospace";
-    ctx.textAlign = "center";
     const phaseText = state.phase === "setup-wait"
       ? "AGUARDANDO ADVERSÁRIO"
       : ["setup-guess", "setup-revealing", "setup-result", "dice-roll"].includes(state.phase)
@@ -1997,9 +2182,28 @@
                     : state.phase === "ai-guess" ? "AGUARDANDO PALPITE"
                       : "AGUARDANDO ADVERSÁRIO"
                   : "IA PENSA";
-    ctx.fillText(phaseText, width / 2, 480);
+    drawPhaseLabel(ctx, phaseText, width / 2, 480, true);
 
     if (state.phase === "dice-roll") drawDice(ctx);
+  }
+
+  function drawPhaseLabel(ctx, text, x, y, mobile) {
+    ctx.save();
+    ctx.font = `${mobile ? 15 : 10}px Consolas, monospace`;
+    const width = Math.ceil(ctx.measureText(text).width) + (mobile ? 34 : 24);
+    const height = mobile ? 36 : 26;
+    ctx.fillStyle = "rgba(9, 27, 24, .72)";
+    roundRect(ctx, x - width / 2, y - height + (mobile ? 7 : 5), width, height, height / 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(201, 239, 116, .22)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, x - width / 2, y - height + (mobile ? 7 : 5), width, height, height / 2);
+    ctx.stroke();
+    ctx.fillStyle = "#dce9d7";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x, y - height / 2 + (mobile ? 7 : 5));
+    ctx.restore();
   }
 
   function drawMobilePlayerPanel(ctx, x, y, player, label, isPlayer) {
@@ -2048,14 +2252,21 @@
     ctx.fillStyle = "#a9bdba";
     ctx.font = `${mobile ? 9 : 7}px Consolas, monospace`;
     ctx.fillText("CARTAS", x, y + (mobile ? 20 : 16));
+    const pillY = y + radius + (mobile ? 12 : 10);
+    const pillWidth = mobile ? 104 : 74;
+    ctx.fillStyle = "rgba(8, 22, 19, .7)";
+    roundRect(ctx, x - pillWidth / 2, pillY - (mobile ? 10 : 8), pillWidth, mobile ? 20 : 16, 8);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(224, 238, 233, .12)";
+    roundRect(ctx, x - pillWidth / 2, pillY - (mobile ? 10 : 8), pillWidth, mobile ? 20 : 16, 8);
+    ctx.stroke();
     ctx.fillStyle = "#ef806f";
     ctx.font = `${mobile ? 12 : 8}px Consolas, monospace`;
-    ctx.fillText(`♥ ${player.hp}`, x, y + radius + (mobile ? 13 : 11));
-    if (player.luck > 0 || player.shields > 0) {
-      ctx.fillStyle = "#d9c477";
-      ctx.font = `${mobile ? 10 : 8}px Consolas, monospace`;
-      ctx.fillText(`✦${player.luck} ⛨${player.shields}`, x, y + radius + (mobile ? 25 : 21));
-    }
+    ctx.textAlign = "left";
+    ctx.fillText(`♥ ${player.hp}`, x - pillWidth / 2 + 8, pillY + (mobile ? 4 : 3));
+    ctx.fillStyle = "#d9c477";
+    ctx.textAlign = "right";
+    ctx.fillText(`✦ ${player.luck}  ⬡ ${player.shields}`, x + pillWidth / 2 - 8, pillY + (mobile ? 4 : 3));
     ctx.restore();
   }
 
@@ -2181,14 +2392,17 @@
       && state.pendingJokerReveal
       && state.pendingJokerReveal.target === "ai";
     for (const layout of layouts) {
-      const selected = selectable && state.pendingJokerReveal.selectedIndices.includes(layout.index);
+      const revealedIndex = selectable
+        ? state.pendingJokerReveal.selectedIndices.indexOf(layout.index)
+        : -1;
+      const selected = revealedIndex >= 0;
       const hovered = selectable && layout.index === hoverOpponentCard;
       const y = layout.y - (hovered ? 12 : 0);
       drawCard(
         ctx,
         layout.x - layout.width / 2,
         y - layout.height / 2,
-        null,
+        selected ? state.pendingJokerReveal.revealedCards[revealedIndex] : null,
         layout.width,
         layout.height,
         0,
@@ -2253,7 +2467,7 @@
       const spacing = visibleCount > 1
         ? Math.min(mobile ? 12 : 16, (mobile ? 150 : 210) / (visibleCount - 1))
         : 0;
-      const startX = mobile ? 48 : 66;
+      const startX = mobile ? 140 : 170;
       for (let index = 0; index < visibleCount; index += 1) {
         const normalized = visibleCount > 1 ? (index / (visibleCount - 1)) * 2 - 1 : 0;
         layouts.push({
@@ -2290,6 +2504,7 @@
     const canPlay = state.phase === "player-play";
     const mobile = isMobileCanvas();
     const compacted = ["player-guess", "setup-guess"].includes(state.phase);
+    if (compacted) return;
     const cardWidth = compacted ? mobile ? 72 : 62 : CARD_WIDTH;
     const cardHeight = compacted ? mobile ? 98 : 84 : CARD_HEIGHT;
     const layouts = getPlayerCardLayouts();
@@ -2540,7 +2755,9 @@
     const scaleY = canvasHeight / rect.height;
     const x = (event.clientX - rect.left) * scaleX;
     const y = (event.clientY - rect.top) * scaleY;
-    const layouts = getPlayerCardLayouts();
+    const layouts = roomState && onlineRole === "room"
+      ? getRoomCardLayouts(getRoomPlayer()?.hand || [])
+      : getPlayerCardLayouts();
 
     for (let index = layouts.length - 1; index >= 0; index -= 1) {
       const layout = layouts[index];
@@ -2567,7 +2784,7 @@
     const layouts = getOpponentCardLayouts();
     for (let index = layouts.length - 1; index >= 0; index -= 1) {
       const layout = layouts[index];
-      if (state.pendingJokerReveal.selectedIndices.includes(layout.index)) continue;
+      if (!state.pendingJokerReveal.selectedIndices.includes(layout.index)) continue;
       if (
         Math.abs(x - layout.x) <= layout.width / 2
         && Math.abs(y - layout.y) <= layout.height / 2
@@ -2577,6 +2794,16 @@
   }
 
   function handleCanvasPointerMove(event) {
+    if (roomState && onlineRole === "room") {
+      const nextHover = roomState.phase === "play" && roomState.turnPlayerId === roomState.you
+        ? getCardAtPointer(event)
+        : -1;
+      if (hoverCard === nextHover) return;
+      hoverCard = nextHover;
+      canvas.style.cursor = nextHover >= 0 ? "pointer" : "default";
+      drawTable();
+      return;
+    }
     const selectingJoker = state?.phase === "player-joker-select";
     const nextHover = state?.phase === "player-play" ? getCardAtPointer(event) : -1;
     const nextOpponentHover = selectingJoker ? getOpponentCardAtPointer(event) : -1;
@@ -2588,6 +2815,12 @@
   }
 
   function handleCanvasClick(event) {
+    if (roomState && onlineRole === "room") {
+      if (roomState.phase !== "play" || roomState.turnPlayerId !== roomState.you) return;
+      const cardIndex = getCardAtPointer(event);
+      if (cardIndex >= 0) playRoomCard(cardIndex);
+      return;
+    }
     if (state?.phase === "player-joker-select") {
       const cardIndex = getOpponentCardAtPointer(event);
       if (cardIndex >= 0) submitJokerReveal(cardIndex);
@@ -2613,6 +2846,12 @@
   });
   canvas.addEventListener("click", handleCanvasClick);
   canvas.addEventListener("keydown", (event) => {
+    if (roomState && onlineRole === "room") {
+      if (!/^[1-9]$/.test(event.key) || roomState.phase !== "play" || roomState.turnPlayerId !== roomState.you) return;
+      const cardIndex = Number(event.key) - 1;
+      playRoomCard(cardIndex);
+      return;
+    }
     if (!state || !["player-play", "dealing"].includes(state.phase) || !/^[1-9]$/.test(event.key)) return;
     const cardIndex = Number(event.key) - 1;
     const card = state.players.player.hand[cardIndex];
@@ -2621,6 +2860,36 @@
   });
 
   document.querySelector("#restart-button").addEventListener("click", startGame);
+  let guessDragStartX = 0;
+  let guessDragScrollLeft = 0;
+  let guessDragged = false;
+  actionArea.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    guessDragStartX = event.clientX;
+    guessDragScrollLeft = actionArea.scrollLeft;
+    guessDragged = false;
+    actionArea.classList.add("is-dragging");
+  });
+  actionArea.addEventListener("pointermove", (event) => {
+    if (!actionArea.classList.contains("is-dragging")) return;
+    const delta = event.clientX - guessDragStartX;
+    if (Math.abs(delta) > 4) guessDragged = true;
+    if (guessDragged) actionArea.scrollLeft = guessDragScrollLeft - delta;
+  });
+  const stopGuessDrag = () => actionArea.classList.remove("is-dragging");
+  actionArea.addEventListener("pointerup", stopGuessDrag);
+  actionArea.addEventListener("pointercancel", stopGuessDrag);
+  actionArea.addEventListener("click", (event) => {
+    if (!guessDragged) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    guessDragged = false;
+  }, true);
+  actionArea.addEventListener("wheel", (event) => {
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    actionArea.scrollLeft += event.deltaY;
+  }, { passive: false });
   useLuckButton.addEventListener("click", useLuck);
   swapHandsButton.addEventListener("click", useSwapHands);
   tableRestartButton.addEventListener("click", requestRematch);
@@ -2663,6 +2932,9 @@
     startOffline: startOfflineGame,
     startOnlineHost,
     waitForOnlineGame,
+    startOnlineRoom,
+    applyRoomSnapshot,
+    playRoomCard,
     applyOnlineSnapshot,
     receiveOnlineAction,
     leaveToMenu: showMenuView

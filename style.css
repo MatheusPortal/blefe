@@ -181,6 +181,24 @@ button { font: inherit; }
 .online-form button[hidden] { display: none; }
 .online-status { min-height: 20px; margin: 12px 0 0; }
 
+.room-list-section { margin-top: 18px; }
+.room-list-section h3 { margin: 0 0 8px; color: var(--mint); font-size: 12px; }
+.room-list { display: grid; gap: 7px; max-height: 210px; overflow-y: auto; }
+.room-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(5, 15, 16, .3);
+}
+.room-list-item > div { min-width: 0; display: grid; gap: 3px; }
+.room-list-item strong { overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.room-list-item span { color: var(--muted); font-size: 10px; }
+.room-list-empty { margin: 0; color: var(--muted); font-size: 11px; }
+
 .connection-log {
   max-height: 55vh;
   display: flex;
@@ -205,7 +223,8 @@ button { font: inherit; }
 
 .table-wrap {
   position: relative;
-  width: min(100%, calc((100svh - 82px) * 5 / 3));
+  width: min(100%, calc(177.778svh - 145.778px));
+  aspect-ratio: 16 / 9;
   flex: none;
   justify-self: center;
   overflow: hidden;
@@ -213,6 +232,12 @@ button { font: inherit; }
   border-radius: 12px;
   background: #193c34;
   box-shadow: 0 22px 60px rgba(0, 0, 0, .3), inset 0 1px rgba(255, 255, 255, .04);
+  animation: table-enter .45s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+@keyframes table-enter {
+  from { opacity: 0; transform: translateY(8px) scale(.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .table-overlay {
@@ -267,7 +292,7 @@ button { font: inherit; }
 #game-canvas {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   touch-action: manipulation;
 }
 
@@ -281,6 +306,7 @@ button { font: inherit; }
   color: var(--muted);
   background: rgba(11, 24, 23, .75);
   font: 10px Consolas, "Courier New", monospace;
+  box-shadow: 0 7px 20px rgba(0, 0, 0, .14);
 }
 
 .timer[hidden] { display: none; }
@@ -330,12 +356,28 @@ button { font: inherit; }
   z-index: 6;
   bottom: 5%;
   left: 50%;
-  width: min(94%, 920px);
+  left: 43%;
+  width: min(300px, 34vw);
   height: clamp(110px, 18%, 165px);
   transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 18px 38px 7px;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  cursor: grab;
+  touch-action: pan-x;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 38px, #000 calc(100% - 38px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 38px, #000 calc(100% - 38px), transparent);
 }
 
 .action-area[hidden] { display: none; }
+.action-area::-webkit-scrollbar { display: none; }
+.action-area.is-dragging { cursor: grabbing; scroll-behavior: auto; scroll-snap-type: none; }
 
 .guess-button, .primary-button, .hint-button {
   min-height: 38px;
@@ -352,12 +394,13 @@ button { font: inherit; }
 }
 
 .guess-card {
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  z-index: var(--fan-z);
+  position: relative;
+  bottom: auto;
+  left: auto;
+  z-index: 1;
   display: flex;
   width: clamp(62px, 5vw, 78px);
+  min-width: clamp(62px, 5vw, 78px);
   height: clamp(82px, 8vw, 102px);
   flex-direction: column;
   align-items: center;
@@ -370,9 +413,17 @@ button { font: inherit; }
   background: linear-gradient(155deg, #fffdf5 0%, #eee8d8 68%, #e1dbc9 100%);
   box-shadow: 0 9px 18px rgba(0, 0, 0, .28), inset 0 0 0 2px rgba(255, 255, 255, .52);
   will-change: transform;
-  transform: translateX(calc(-50% + var(--fan-x))) translateY(var(--fan-y)) rotate(var(--fan-angle));
-  transform-origin: 50% 95%;
+  transform: none;
+  transform-origin: 50% 100%;
+  scroll-snap-align: center;
+  animation: card-enter .34s cubic-bezier(.2, .8, .2, 1) both;
+  animation-delay: calc(var(--fan-z) * 22ms);
   transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+
+@keyframes card-enter {
+  from { opacity: 0; translate: 0 18px; }
+  to { opacity: 1; translate: 0 0; }
 }
 
 .guess-card::after {
@@ -393,7 +444,7 @@ button { font: inherit; }
   z-index: 20;
   box-shadow: 0 15px 26px rgba(0, 0, 0, .34), inset 0 0 0 2px rgba(255, 255, 255, .7);
   filter: brightness(1.05);
-  transform: translateX(calc(-50% + var(--fan-x))) translateY(calc(var(--fan-y) - 13px)) rotate(var(--fan-angle)) scale(1.1);
+  transform: translateY(-12px) scale(1.08);
 }
 
 .guess-card:focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }
@@ -426,7 +477,7 @@ button { font: inherit; }
 .hint-button:hover:not(:disabled) { background: rgba(120, 213, 170, .16); }
 
 .table-footer {
-  width: min(100%, calc((100svh - 82px) * 5 / 3));
+  width: min(100%, calc(177.778svh - 145.778px));
   min-height: 28px;
   flex: none;
   display: flex;
@@ -506,8 +557,8 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   top: auto;
   right: 12px;
   bottom: 12px;
-  width: min(255px, 29%);
-  height: min(215px, 31vh);
+  width: min(280px, 28%);
+  height: min(220px, 30vh);
   min-height: 140px;
   pointer-events: none;
 }
@@ -528,11 +579,12 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   box-shadow: 0 10px 28px rgba(0, 0, 0, .14);
   backdrop-filter: blur(7px) saturate(.85);
   pointer-events: auto;
-  transition: background .16s ease, opacity .16s ease;
+  transition: background .16s ease, opacity .16s ease, transform .16s ease;
 }
 
 .game-chat-panel:hover, .game-chat-panel:focus-within { background: rgba(8, 20, 20, .72); }
 .game-shell.is-choosing .game-chat-widget {
+  width: min(205px, 22%);
   height: min(145px, 23vh);
   min-height: 92px;
 }
@@ -580,11 +632,18 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 }
 
 .chat-toggle-button:hover { background: rgba(201, 239, 116, .12); }
+.chat-toggle-button:active { transform: scale(.92); }
 
 .game-chat-widget.is-minimized {
   width: min(230px, 32%);
   height: auto;
   min-height: 0;
+}
+
+.game-shell.is-choosing .game-chat-widget.is-minimized {
+  width: min(180px, 24%);
+  height: 44px;
+  min-height: 44px;
 }
 
 .game-chat-widget.is-minimized .game-panel-heading { margin-bottom: 0; }
@@ -684,6 +743,7 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .game-shell { gap: 0; padding: 2px 0 0; }
   .table-wrap {
     width: min(100%, calc((100svh - 74px) * 780 / 1520));
+    aspect-ratio: 780 / 1520;
     margin: 0 auto;
     border-radius: 7px;
   }
@@ -692,8 +752,8 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .turn-tool-button { min-height: 26px; padding: 0 7px; font-size: 8px; }
   .round-countdown { top: 9px; gap: 3px; padding: 5px 8px; font-size: 9px; }
   .round-countdown strong { font-size: 15px; }
-  .action-area { bottom: 5%; width: 100%; height: clamp(82px, 17%, 135px); }
-  .guess-card { width: clamp(38px, 10.5vw, 52px); height: clamp(62px, 17.5vw, 78px); gap: 3px; padding: 5px 2px 8px; border-radius: 6px; }
+  .action-area { bottom: 5%; left: 50%; width: min(220px, 68vw); height: clamp(82px, 17%, 135px); gap: 10px; padding: 14px 26px 6px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent); }
+  .guess-card { width: clamp(38px, 10.5vw, 52px); min-width: clamp(38px, 10.5vw, 52px); height: clamp(62px, 17.5vw, 78px); gap: 3px; padding: 5px 2px 8px; border-radius: 6px; }
   .guess-card-emoji { font-size: clamp(16px, 5vw, 22px); }
   .guess-card-name { font-size: clamp(7px, 2vw, 9px); }
   .guess-card::after { height: 2px; }
@@ -718,6 +778,12 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
     transform: none;
   }
   .game-chat-widget.is-minimized { width: min(160px, 48%); height: auto; min-height: 0; }
+  .game-shell.is-choosing .game-chat-widget.is-minimized {
+    width: min(145px, 42%);
+    height: 38px;
+    min-height: 38px;
+    bottom: 128px;
+  }
   .game-chat-panel { padding: 7px; background: rgba(8, 20, 20, .38); }
   .game-panel-heading h2 { font-size: 12px; }
   .game-panel-heading > span { font-size: 8px; }
@@ -725,6 +791,17 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .chat-form input, .chat-form button { min-height: 32px; }
   .chat-form { gap: 4px; }
   .chat-form button { padding: 0 8px; }
+  .game-chat-widget:focus-within,
+  .game-chat-widget.is-chat-focused {
+    z-index: 7;
+    width: min(230px, 64%);
+    height: min(190px, 28svh);
+    min-height: 128px;
+  }
+  .game-shell.is-choosing .game-chat-widget.is-chat-focused {
+    height: min(190px, 28svh);
+    min-height: 128px;
+  }
 }
 
 @media (min-width: 651px) and (max-width: 1050px) {

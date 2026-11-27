@@ -8,7 +8,6 @@ import { WebSocket, WebSocketServer } from "ws";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 10000);
-const waitingPeers = [];
 const rooms = new Map();
 const peers = new Map();
 const socketPeers = new WeakMap();
@@ -104,10 +103,6 @@ function sendError(peer, message) {
   send(peer.socket, { type: "error", message });
 }
 
-function otherPeer(room, peer) {
-  return room.host === peer ? room.guest : room.host;
-}
-
 function normalizeNickname(value) {
   if (typeof value !== "string") return null;
   const nickname = value.trim().replace(/\s+/g, " ");
@@ -115,95 +110,490 @@ function normalizeNickname(value) {
   return nickname;
 }
 
-function leaveQueue(peer) {
-  const index = waitingPeers.indexOf(peer);
-  if (index >= 0) waitingPeers.splice(index, 1);
-  peer.queued = false;
+function normalizeRoomName(value) {
+  if (typeof value !== "string") return null;
+  const name = value.trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 32 || /[\u0000-\u001f\u007f]/.test(name)) return null;
+  return name;
+}
+
+function roomSummary(room) {
+  return {
+    id: room.id,
+    name: room.name,
+    hostId: room.hostId,
+    playerCount: room.players.size,
+    maxPlayers: 4,
+    status: room.status
+  };
+}
+
+function lobbyPlayer(peer) {
+  return { id: peer.publicId, nickname: peer.nickname };
+}
+
+function broadcastRooms() {
+  const list = [...rooms.values()]
+    .filter((room) => room.status === "lobby" && room.players.size < 4)
+    .map(roomSummary);
+  for (const peer of peers.values()) {
+    if (!peer.room) send(peer.socket, { type: "room-list", rooms: list });
+  }
+}
+
+function broadcastRoom(room, payload) {
+  for (const peer of room.players.values()) send(peer.socket, payload);
+}
+
+function relayLobby(room) {
+  broadcastRoom(room, {
+    type: "lobby-update",
+    room: {
+      ...roomSummary(room),
+      players: [...room.players.values()].map(lobbyPlayer)
+    }
+  });
+}
+
+function finishRoom(room, winner) {
+  if (room.timer) clearTimeout(room.timer);
+  if (room.game) clearDeadlineTimer(room.game);
+  room.timer = null;
+  room.status = "finished";
+  if (room.game) room.game.winnerId = winner?.publicId || null;
+  broadcastRoom(room, {
+    type: "game-over",
+    winner: winner ? lobbyPlayer(winner) : null,
+    roomId: room.id
+  });
+  broadcastGame(room, "finished");
+  logEvent("game-finished", { roomId: room.id, winnerId: winner?.publicId || null });
+}
+
+function detachPeer(room, peer, reason) {
+  if (!room) return;
+  room.players.delete(peer.publicId);
+  peer.room = null;
+  if (room.game?.players.has(peer.publicId)) {
+    const player = room.game.players.get(peer.publicId);
+    player.alive = false;
+    player.peer = null;
+  }
+  if (room.hostId === peer.publicId) {
+    const nextHost = room.players.values().next().value;
+    room.hostId = nextHost?.publicId || null;
+  }
+  if (room.status === "lobby") {
+    if (room.players.size === 0) rooms.delete(room.id);
+    else relayLobby(room);
+    broadcastRooms();
+    return;
+  }
+  if (room.players.size === 0) {
+    if (room.timer) clearTimeout(room.timer);
+    if (room.game) clearDeadlineTimer(room.game);
+    rooms.delete(room.id);
+  } else {
+    checkEliminationsAndWinner(room);
+    if (room.status !== "finished") advanceIfNeeded(room);
+    logEvent("room-player-left", { roomId: room.id, playerId: peer.publicId, reason });
+  }
 }
 
 function disconnectPeer(peer, reason) {
   if (!peers.has(peer.id)) return;
-  leaveQueue(peer);
+  const room = peer.room;
   peers.delete(peer.id);
+  detachPeer(room, peer, reason);
+  logEvent("peer-disconnected", { peerId: peer.publicId, reason });
+}
 
-  if (peer.room) {
-    const room = peer.room;
-    const opponent = otherPeer(room, peer);
-    rooms.delete(room.id);
-    peer.room = null;
-    if (opponent) {
-      opponent.room = null;
-      send(opponent.socket, { type: "peer-left", nickname: peer.nickname || "O adversário" });
+function shuffle(items) {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [items[index], items[target]] = [items[target], items[index]];
+  }
+  return items;
+}
+
+function makeInitialHands(count) {
+  const common = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga"];
+  const fullDeck = shuffle([...common.flatMap((type) => Array(5).fill(type)), "troca", "coringa"]);
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const deck = [...fullDeck];
+    shuffle(deck);
+    const hands = Array.from({ length: count }, () => []);
+    for (let round = 0; round < 7; round += 1) {
+      for (let playerIndex = 0; playerIndex < count; playerIndex += 1) {
+        const counts = hands[playerIndex].reduce((result, type) => {
+          result[type] = (result[type] || 0) + 1;
+          return result;
+        }, {});
+        const cardIndex = deck.findIndex((type) => (counts[type] || 0) < 3 || type === "troca" || type === "coringa");
+        if (cardIndex < 0) break;
+        hands[playerIndex].push(deck.splice(cardIndex, 1)[0]);
+      }
     }
-    logEvent("room-closed", { roomId: room.id, role: peer.role, reason });
+    if (hands.every((hand) => hand.length === 7)) return { hands, deck };
   }
-
-  logEvent("peer-disconnected", { peerId: peer.id, reason });
+  throw new Error("Não foi possível distribuir o baralho.");
 }
 
-function joinQueue(peer, requestedNickname) {
-  if (peer.room || peer.queued) {
-    sendError(peer, "Você já está em uma sala ou na fila.");
-    return;
-  }
-  const nickname = normalizeNickname(requestedNickname);
-  if (!nickname) {
-    sendError(peer, "Use um nickname de 2 a 18 caracteres.");
-    return;
-  }
-  peer.nickname = nickname;
-
-  let host;
-  while (waitingPeers.length && !host) {
-    const candidateIndex = Math.floor(Math.random() * waitingPeers.length);
-    const [candidate] = waitingPeers.splice(candidateIndex, 1);
-    candidate.queued = false;
-    if (candidate.socket.readyState === WebSocket.OPEN && !candidate.room) host = candidate;
-  }
-
-  if (!host) {
-    peer.queued = true;
-    peer.role = "host";
-    waitingPeers.push(peer);
-    send(peer.socket, { type: "waiting" });
-    logEvent("peer-waiting", { peerId: peer.id });
-    return;
-  }
-
-  const room = {
-    id: randomUUID(),
-    host,
-    guest: peer,
-    createdAt: Date.now()
+function startRoomGame(room) {
+  const players = [...room.players.values()];
+  const { hands, deck } = makeInitialHands(players.length);
+  const gamePlayers = new Map(players.map((peer, index) => [peer.publicId, {
+    id: peer.publicId,
+    nickname: peer.nickname,
+    peer,
+    hand: hands[index],
+    hp: 5,
+    shields: 0,
+    luck: 0,
+    alive: true
+  }]));
+  room.game = {
+    players: gamePlayers,
+    deck,
+    turnOrder: players.map((peer) => peer.publicId),
+    turnIndex: 0,
+    turnPlayerId: players[0].publicId,
+    round: 1,
+    phase: "play",
+    activeCard: null,
+    guesses: new Map(),
+    lastResult: null,
+    winnerId: null,
+    swapOwnerId: null,
+    deadlineTimer: null
   };
-  host.room = room;
-  host.role = "host";
-  peer.room = room;
-  peer.role = "guest";
-  rooms.set(room.id, room);
-
-  send(host.socket, { type: "matched", roomId: room.id, role: "host", opponentNickname: peer.nickname });
-  send(peer.socket, { type: "matched", roomId: room.id, role: "guest", opponentNickname: host.nickname });
-  logEvent("room-matched", { roomId: room.id });
+  room.status = "playing";
+  broadcastRoom(room, {
+    type: "room-started",
+    roomId: room.id,
+    players: players.map(lobbyPlayer)
+  });
+  broadcastGame(room);
+  scheduleDeadline(room);
+  broadcastRooms();
+  logEvent("room-started", { roomId: room.id, players: players.length });
 }
 
-function validSignal(signal) {
-  if (!signal || typeof signal !== "object") return false;
-  if (signal.type === "offer" || signal.type === "answer") {
-    return typeof signal.sdp === "string" && signal.sdp.length <= 48_000;
+function gamePlayerList(game, recipientId) {
+  return game.turnOrder.map((id) => game.players.get(id)).map((player) => ({
+    id: player.id,
+    nickname: player.nickname,
+    hp: player.hp,
+    shields: player.shields,
+    luck: player.luck,
+    handCount: player.hand.length,
+    hand: player.id === recipientId ? [...player.hand] : undefined,
+    eliminated: !player.alive
+  }));
+}
+
+function broadcastGame(room, phase = room.game?.phase) {
+  const game = room.game;
+  if (!game) return;
+  for (const peer of room.players.values()) {
+    const snapshot = {
+      roomId: room.id,
+      phase,
+      round: game.round,
+      turnPlayerId: game.turnPlayerId,
+      activeCard: phase === "result" || phase === "finished" ? game.activeCard : null,
+      guessCount: phase === "guess" ? game.guesses.size : undefined,
+      guessed: phase === "guess" ? game.guesses.has(peer.publicId) : false,
+      seconds: game.deadlineTimer ? Math.max(0, Math.ceil((game.deadlineAt - Date.now()) / 1000)) : null,
+      guesses: phase === "result" || phase === "finished"
+        ? Object.fromEntries(game.guesses)
+        : undefined,
+      lastResult: game.lastResult && (phase === "result" || phase === "finished") ? {
+        ...game.lastResult,
+        outcomes: game.lastResult.outcomes.map(({ cards, ...outcome }) => ({
+          ...outcome,
+          cardsDrawn: cards.length
+        }))
+      } : null,
+      swapOwnerId: game.swapOwnerId,
+      winnerId: game.winnerId,
+      players: gamePlayerList(game, peer.publicId),
+      you: peer.publicId
+    };
+    send(peer.socket, { type: "game-state", state: snapshot });
   }
-  if (signal.type === "candidate") {
-    const candidate = signal.candidate;
-    return candidate === null || (
-      candidate
-      && typeof candidate === "object"
-      && typeof candidate.candidate === "string"
-      && candidate.candidate.length <= 2_048
-      && (candidate.sdpMid === undefined || candidate.sdpMid === null || typeof candidate.sdpMid === "string")
-      && (candidate.sdpMLineIndex === undefined || candidate.sdpMLineIndex === null || Number.isInteger(candidate.sdpMLineIndex))
-    );
+}
+
+function clearDeadlineTimer(game) {
+    if (game?.deadlineTimer) clearTimeout(game.deadlineTimer);
+    if (game) {
+      game.deadlineTimer = null;
+      game.deadlineAt = null;
+    }
   }
-  return false;
+
+function scheduleDeadline(room) {
+    const game = room.game;
+    clearDeadlineTimer(game);
+    if (!game || room.status !== "playing") return;
+    game.deadlineAt = Date.now() + 40_000;
+    game.deadlineTimer = setTimeout(() => {
+      if (room.status !== "playing" || !game.deadlineAt) return;
+      const expected = [...game.players.values()].filter((player) => player.alive);
+      if (game.phase === "play") {
+        const owner = game.players.get(game.turnPlayerId);
+        if (owner?.alive && owner.hand.length) {
+          const index = Math.floor(Math.random() * owner.hand.length);
+          game.activeCard = owner.hand.splice(index, 1)[0];
+          game.guesses.clear();
+          game.phase = "guess";
+          broadcastGame(room);
+          scheduleDeadline(room);
+        }
+      } else if (game.phase === "guess") {
+        const available = cardTypes.filter((type) => type !== game.activeCard);
+        for (const player of expected) {
+          if (player.id !== game.turnPlayerId && !game.guesses.has(player.id)) {
+            game.guesses.set(player.id, available[Math.floor(Math.random() * available.length)]);
+          }
+        }
+        resolveRound(room);
+      }
+    }, 40_000);
+  }
+
+function drawCards(game, player, count) {
+  const drawn = [];
+  for (let index = 0; index < count && game.deck.length > 0; index += 1) {
+    const card = game.deck.pop();
+    player.hand.push(card);
+    drawn.push(card);
+  }
+  return drawn;
+}
+
+function damage(gamePlayer, amount) {
+  const blocked = Math.min(gamePlayer.shields, amount);
+  gamePlayer.shields -= blocked;
+  const hpLost = Math.min(gamePlayer.hp, amount - blocked);
+  gamePlayer.hp -= hpLost;
+  return { blocked, hpLost };
+}
+
+function gainLuck(player, amount) {
+  const gained = Math.min(amount, 5 - player.luck);
+  player.luck += gained;
+  return gained;
+}
+
+function resolveEffect(game, type, owner, guesser, correct) {
+  const result = { guesserId: guesser.id, correct, hp: 0, shields: 0, cards: [], ownerHp: 0, ownerShields: 0, ownerLuck: 0 };
+  if (correct) {
+    if (type === "tigre" || type === "tartaruga") {
+      if (guesser.hp < 5) {
+        guesser.hp += 1;
+        result.hp = 1;
+      } else {
+        guesser.shields += 1;
+        result.shields = 1;
+      }
+    } else if (type === "peixe" && guesser.hp < 5) {
+      guesser.hp += 1;
+      result.hp = 1;
+    } else if (["macaco", "vaca", "coelho"].includes(type)) {
+      result.luck = gainLuck(guesser, 1);
+    } else if (type === "elefante") {
+      guesser.shields += 1;
+      result.shields = 1;
+    }
+    return result;
+  }
+
+  if (type === "leao") {
+    Object.assign(result, damage(guesser, 2), { cards: drawCards(game, guesser, 1) });
+    result.ownerLuck = gainLuck(owner, 1);
+  } else if (type === "coelho") {
+    result.cards = drawCards(game, guesser, 3);
+    result.ownerLuck = gainLuck(owner, 2);
+  } else if (type === "vaca") {
+    result.cards = drawCards(game, guesser, 2);
+    owner.shields += 2;
+    result.ownerShields = 2;
+  } else if (type === "peixe") {
+    result.cards = drawCards(game, guesser, 2);
+    const lost = Math.min(3, guesser.shields);
+    guesser.shields -= lost;
+    result.shieldsLost = lost;
+    const healed = Math.min(1, 5 - owner.hp);
+    owner.hp += healed;
+    result.ownerHp = healed;
+    result.ownerLuck = gainLuck(owner, 1);
+  } else if (type === "tigre") {
+    Object.assign(result, damage(guesser, 1), { cards: drawCards(game, guesser, 2) });
+  } else if (type === "macaco") {
+    Object.assign(result, damage(guesser, 3), { cards: drawCards(game, guesser, 1) });
+    owner.shields += 2;
+    result.ownerShields = 2;
+  } else if (type === "elefante") {
+    const hpLost = Math.min(1, guesser.hp);
+    const shieldsLost = Math.min(2, guesser.shields);
+    guesser.hp -= hpLost;
+    guesser.shields -= shieldsLost;
+    result.hpLost = hpLost;
+    result.shieldsLost = shieldsLost;
+  } else if (type === "tartaruga") {
+    result.cards = drawCards(game, guesser, 1);
+    const lost = Math.min(1, guesser.shields);
+    guesser.shields -= lost;
+    result.shieldsLost = lost;
+    owner.shields += 1;
+    result.ownerShields = 1;
+  } else if (type === "troca") {
+    game.swapOwnerId = owner.id;
+  } else if (type === "coringa") {
+    const healed = Math.min(1, 5 - owner.hp);
+    owner.hp += healed;
+    owner.shields += 1;
+    result.ownerHp = healed;
+    result.ownerShields = 1;
+    if (guesser.hand.length > 0) {
+      const indices = shuffle(guesser.hand.map((_, index) => index)).slice(0, 2);
+      result.revealedCards = indices.map((index) => guesser.hand[index]);
+      const chosen = indices[Math.floor(Math.random() * indices.length)];
+      result.transferredCard = guesser.hand.splice(chosen, 1)[0];
+      owner.hand.push(result.transferredCard);
+    }
+  }
+  return result;
+}
+
+function nextAliveId(game, afterId) {
+  const start = game.turnOrder.indexOf(afterId);
+  for (let step = 1; step <= game.turnOrder.length; step += 1) {
+    const id = game.turnOrder[(start + step) % game.turnOrder.length];
+    if (game.players.get(id).alive) return id;
+  }
+  return null;
+}
+
+function checkEliminationsAndWinner(room) {
+  const game = room.game;
+  if (!game || game.winnerId) return;
+  for (const player of game.players.values()) {
+    if (player.alive && (player.hp <= 0 || player.hand.length === 0)) player.alive = false;
+  }
+  const alive = [...game.players.values()].filter((player) => player.alive);
+  if (alive.length <= 1) finishRoom(room, alive[0]?.peer || null);
+}
+
+function scheduleNextTurn(room) {
+  if (room.timer) clearTimeout(room.timer);
+  room.timer = setTimeout(() => {
+    room.timer = null;
+    if (room.status !== "playing") return;
+    room.game.swapOwnerId = null;
+    startNextTurn(room);
+  }, 4_000);
+}
+
+function startNextTurn(room) {
+  const game = room.game;
+  if (game.phase !== "result") return;
+  checkEliminationsAndWinner(room);
+  if (room.status !== "playing") return;
+  const nextId = nextAliveId(game, game.turnPlayerId);
+  if (!nextId) return finishRoom(room, null);
+  game.turnPlayerId = nextId;
+  game.turnIndex = game.turnOrder.indexOf(nextId);
+  game.round += 1;
+  game.phase = "play";
+  game.activeCard = null;
+  game.guesses.clear();
+  game.lastResult = null;
+  game.swapOwnerId = null;
+  broadcastGame(room);
+  scheduleDeadline(room);
+}
+
+function resolveRound(room) {
+  const game = room.game;
+  clearDeadlineTimer(game);
+  const owner = game.players.get(game.turnPlayerId);
+  const outcomes = [];
+  for (const [id, guess] of game.guesses) {
+    const guesser = game.players.get(id);
+    if (guesser?.alive) outcomes.push(resolveEffect(game, game.activeCard, owner, guesser, guess === game.activeCard));
+  }
+  game.lastResult = {
+    card: game.activeCard,
+    ownerId: owner.id,
+    guesses: Object.fromEntries(game.guesses),
+    outcomes
+  };
+  game.phase = "result";
+  checkEliminationsAndWinner(room);
+  if (room.status === "playing") {
+    broadcastGame(room, "result");
+    scheduleNextTurn(room);
+  }
+}
+
+function advanceIfNeeded(room) {
+  const game = room.game;
+  if (!game || room.status !== "playing") return;
+  if (game.phase === "guess") {
+    const expected = [...game.players.values()].filter((player) => player.alive && player.id !== game.turnPlayerId);
+    if (expected.length === 0 || expected.every((player) => game.guesses.has(player.id))) resolveRound(room);
+  } else if (game.phase === "play" && !game.players.get(game.turnPlayerId)?.alive) {
+    const nextId = nextAliveId(game, game.turnPlayerId);
+    if (nextId) {
+      game.turnPlayerId = nextId;
+      broadcastGame(room);
+    }
+  }
+}
+
+function handleRoomAction(peer, action) {
+  const room = peer.room;
+  if (!room || room.status !== "playing" || !action || typeof action !== "object") throw new Error("A partida não está ativa.");
+  const game = room.game;
+  const player = game.players.get(peer.publicId);
+  if (!player?.alive) throw new Error("Você não está ativo nesta partida.");
+
+  if (action.action === "play") {
+    if (game.phase !== "play" || game.turnPlayerId !== player.id) throw new Error("Não é a sua vez de jogar.");
+    if (!Number.isInteger(action.cardIndex) || action.cardIndex < 0 || action.cardIndex >= player.hand.length) throw new Error("Índice de carta inválido.");
+    game.activeCard = player.hand.splice(action.cardIndex, 1)[0];
+    game.guesses.clear();
+    game.phase = "guess";
+    scheduleDeadline(room);
+    broadcastGame(room);
+    scheduleDeadline(room);
+    advanceIfNeeded(room);
+    return;
+  }
+  if (action.action === "guess") {
+    if (game.phase !== "guess" || game.turnPlayerId === player.id) throw new Error("Você não pode adivinhar nesta fase.");
+    if (!cardTypes.includes(action.guess)) throw new Error("Palpite inválido.");
+    if (game.guesses.has(player.id)) throw new Error("Seu palpite já foi registrado.");
+    game.guesses.set(player.id, action.guess);
+    broadcastGame(room);
+    scheduleDeadline(room);
+    advanceIfNeeded(room);
+    return;
+  }
+  if (action.action === "swap") {
+    if (game.phase !== "result" || game.swapOwnerId !== player.id) throw new Error("A troca não está disponível.");
+    const targetId = nextAliveId(game, player.id);
+    const target = targetId && game.players.get(targetId);
+    if (!target) throw new Error("Não há jogador para trocar.");
+    [player.hand, target.hand] = [target.hand, player.hand];
+    game.swapOwnerId = null;
+    game.lastResult.swappedWith = target.id;
+    broadcastGame(room, "result");
+    return;
+  }
+  throw new Error("Ação de sala inválida.");
 }
 
 function handleMessage(peer, message) {
@@ -212,29 +602,95 @@ function handleMessage(peer, message) {
     return;
   }
 
-  if (message.type === "queue") {
-    joinQueue(peer, message.nickname);
+  if (message.type === "list-rooms") {
+    if (!peer.room) send(peer.socket, {
+      type: "room-list",
+      rooms: [...rooms.values()].filter((room) => room.status === "lobby").map(roomSummary)
+    });
     return;
   }
 
-  if (message.type === "cancel-queue") {
-    if (peer.room) {
-      sendError(peer, "A partida já foi encontrada.");
-      return;
-    }
-    leaveQueue(peer);
-    send(peer.socket, { type: "queue-cancelled" });
-    logEvent("queue-cancelled", { peerId: peer.id });
+  if (message.type === "create-room") {
+    const nickname = normalizeNickname(message.nickname);
+    const name = normalizeRoomName(message.roomName);
+    if (!nickname || !name) throw new Error("Informe um nickname e nome de sala válidos.");
+    if (peer.room) throw new Error("Você já está em uma sala.");
+    const room = {
+      id: randomUUID(),
+      name,
+      hostId: peer.publicId,
+      players: new Map([[peer.publicId, peer]]),
+      status: "lobby",
+      createdAt: Date.now(),
+      game: null,
+      timer: null
+    };
+    peer.nickname = nickname;
+    peer.room = room;
+    rooms.set(room.id, room);
+    send(peer.socket, { type: "room-created", publicId: peer.publicId, room: { ...roomSummary(room), players: [lobbyPlayer(peer)] } });
+    relayLobby(room);
+    broadcastRooms();
+    logEvent("room-created", { roomId: room.id });
     return;
   }
 
-  if (message.type === "signal") {
-    if (!peer.room || !validSignal(message.signal)) {
-      sendError(peer, "Sinalização inválida ou sala encerrada.");
-      return;
+  if (message.type === "join-room") {
+    const nickname = normalizeNickname(message.nickname);
+    if (!nickname) throw new Error("Use um nickname de 2 a 18 caracteres.");
+    if (peer.room) throw new Error("Você já está em uma sala.");
+    if (typeof message.roomId !== "string") throw new Error("Sala inválida.");
+    const room = rooms.get(message.roomId);
+    if (!room || room.status !== "lobby") throw new Error("Sala indisponível.");
+    if (room.players.size >= 4) throw new Error("A sala está cheia.");
+    if ([...room.players.values()].some((member) => member.nickname.toLowerCase() === nickname.toLowerCase())) {
+      throw new Error("Esse nickname já está em uso na sala.");
     }
-    send(otherPeer(peer.room, peer).socket, { type: "signal", signal: message.signal });
-    logEvent("webrtc-signal-forwarded", { roomId: peer.room.id, signalType: message.signal.type });
+    peer.nickname = nickname;
+    peer.room = room;
+    room.players.set(peer.publicId, peer);
+    send(peer.socket, { type: "room-joined", publicId: peer.publicId, room: { ...roomSummary(room), players: [...room.players.values()].map(lobbyPlayer) } });
+    relayLobby(room);
+    broadcastRooms();
+    return;
+  }
+
+  if (message.type === "start-room") {
+    const room = peer.room;
+    if (!room || room.status !== "lobby") throw new Error("Sala inválida para iniciar.");
+    if (room.hostId !== peer.publicId) throw new Error("Somente o host pode iniciar a partida.");
+    if (room.players.size < 2 || room.players.size > 4) throw new Error("São necessários de 2 a 4 jogadores.");
+    startRoomGame(room);
+    return;
+  }
+
+  if (message.type === "leave-room") {
+    const room = peer.room;
+    detachPeer(room, peer, "player-left");
+    send(peer.socket, { type: "room-left" });
+    send(peer.socket, { type: "room-list", rooms: [...rooms.values()].filter((candidate) => candidate.status === "lobby").map(roomSummary) });
+    return;
+  }
+
+  if (message.type === "room-action") {
+    handleRoomAction(peer, message.payload);
+    return;
+  }
+
+  if (message.type === "chat-room") {
+    const room = peer.room;
+    if (!room) throw new Error("Você não está em uma sala.");
+    const text = typeof message.text === "string" ? message.text.trim() : "";
+    if (text.length < 1 || text.length > 240 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) {
+      throw new Error("Mensagem de chat inválida.");
+    }
+    broadcastRoom(room, {
+      type: "room-chat",
+      roomId: room.id,
+      from: lobbyPlayer(peer),
+      text,
+      at: new Date().toISOString()
+    });
     return;
   }
 
@@ -247,9 +703,9 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
     response.end(JSON.stringify({
       status: "ok",
-      waiting: waitingPeers.length,
+      waiting: 0,
       rooms: rooms.size,
-      playersOnline: rooms.size * 2
+      playersOnline: peers.size
     }));
     return;
   }
@@ -358,11 +814,10 @@ server.on("upgrade", (request, socket, head) => {
 webSocketServer.on("connection", (socket) => {
   const peer = {
     id: randomUUID(),
+    publicId: randomUUID(),
     socket,
     nickname: null,
     room: null,
-    role: null,
-    queued: false,
     messageWindowAt: Date.now(),
     messageCount: 0,
     isAlive: true
