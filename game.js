@@ -1865,7 +1865,11 @@
     if (roomState && onlineRole === "room") {
       actionArea.replaceChildren();
       actionRenderKey = "";
-      if (roomState.phase === "guess" && roomState.turnPlayerId !== roomState.you && !roomState.guessed) {
+      if (roomState.phase === "setup-guess" && !roomState.guessed) {
+        COMMON_CARDS.forEach((type, index) => {
+          addGuessButton(type, () => roomSession?.sendAction({ action: "setup-guess", guess: type }), index, COMMON_CARDS.length);
+        });
+      } else if (roomState.phase === "guess" && roomState.turnPlayerId !== roomState.you && !roomState.guessed) {
         CARD_TYPES.forEach((type, index) => {
           addGuessButton(type, () => roomSession?.sendAction({ action: "guess", guess: type }), index, CARD_TYPES.length);
         });
@@ -1942,7 +1946,9 @@
       tableFooter.hidden = roomState.phase === "finished";
       restartButton.hidden = true;
       const own = getRoomPlayer();
-      actionArea.hidden = !(roomState.phase === "guess"
+      actionArea.hidden = !(roomState.opening
+        ? roomState.phase === "setup-guess" && !roomState.guessed
+        : roomState.phase === "guess"
         && roomState.turnPlayerId !== roomState.you
         && !roomState.guessed
         && own && !own.eliminated);
@@ -1951,7 +1957,9 @@
       const owner = roomState.players.find((player) => player.id === roomState.turnPlayerId);
       canvas.setAttribute("aria-label", roomState.phase === "play"
         ? `${roomState.turnPlayerId === roomState.you ? "Sua vez" : `Vez de ${owner?.nickname || "jogador"}`}. Rodada ${roomState.round}.`
-        : `${roomState.round}: ${roomState.phase === "guess" ? "adivinhem a carta" : "resultado"}.`);
+        : roomState.phase === "setup-guess"
+          ? "Palpite de abertura. Adivinhe a carta central."
+          : `${roomState.round}: ${roomState.phase === "guess" ? "adivinhem a carta" : "resultado"}.`);
   }
 
   function drawRoomTable(ctx) {
@@ -1991,14 +1999,19 @@
       const activeOwner = roomState.players.find((player) => player.id === roomState.turnPlayerId);
       const centerY = mobile ? 650 : 326;
       drawCard(ctx, width / 2 - (mobile ? 62 : 50), centerY - (mobile ? 88 : 72),
-        roomState.activeCard || (roomState.lastResult ? roomState.lastResult.card : null), mobile ? 124 : 100, mobile ? 176 : 144);
+        roomState.phase === "setup-result" || roomState.phase === "dice-roll"
+          ? roomState.lastResult?.card || roomState.activeCard
+          : roomState.activeCard || (roomState.lastResult ? roomState.lastResult.card : null), mobile ? 124 : 100, mobile ? 176 : 144);
       ctx.fillStyle = "#dce9d7";
       ctx.textAlign = "center";
       ctx.font = `${mobile ? 15 : 10}px Consolas, monospace`;
       ctx.fillText(
         roomState.phase === "play"
           ? `${activeOwner?.nickname || "Jogador"} joga`
-          : roomState.phase === "guess" ? `Todos adivinham · ${roomState.guessCount || 0} enviados`
+          : roomState.phase === "setup-guess" ? "PALPITE DE ABERTURA"
+          : roomState.phase === "setup-result" ? `${activeOwner?.nickname || "Jogador"} acertou e começa`
+          : roomState.phase === "dice-roll" ? "DESEMPATE NOS DADOS"
+          : roomState.phase === "guess" ? `Seu palpite · ${roomState.guessCount || 0} enviado(s)`
             : roomState.phase === "finished" ? "PARTIDA ENCERRADA" : `Rodada ${roomState.round} · resultado`,
         width / 2,
         centerY + (mobile ? 120 : 96)
@@ -2007,6 +2020,11 @@
       if (own && !own.eliminated) drawRoomHand(ctx, own.hand || []);
       drawRoomExtraDeck(ctx);
       drawRoomGuessMarkers(ctx);
+      if (roomState.phase === "dice-roll" && roomState.dice) {
+        const ids = roomState.players.map((player) => player.id);
+        drawDie(ctx, mobile ? 270 : 455, mobile ? 650 : 326, roomState.dice[ids[0]]);
+        drawDie(ctx, mobile ? 510 : 645, mobile ? 650 : 326, roomState.dice[ids[1]]);
+      }
       if (roomState.lastResult) {
         ctx.fillStyle = "rgba(8,20,20,.75)";
         roundRect(ctx, mobile ? 165 : 350, centerY - (mobile ? 245 : 170), mobile ? 450 : 400, mobile ? 72 : 52, 9);
@@ -2070,13 +2088,17 @@
     const cardWidth = mobile ? 94 : 94;
     const cardHeight = mobile ? 132 : 132;
     const spacing = count > 1 ? Math.min(mobile ? 42 : 30, (mobile ? 460 : 520) / (count - 1)) : 0;
-    const startX = canvasWidth / 2 - ((count - 1) * spacing) / 2;
+    const compacted = ["setup-guess", "guess", "setup-result", "dice-roll"].includes(roomState.phase);
+    const centerX = compacted ? canvasWidth - (mobile ? 70 : 70) : canvasWidth / 2;
+    const startX = compacted ? centerX - ((count - 1) * (mobile ? 4 : 3)) / 2 : canvasWidth / 2 - ((count - 1) * spacing) / 2;
     for (let index = 0; index < count; index += 1) {
       const normalized = count > 1 ? (index / (count - 1)) * 2 - 1 : 0;
       drawCard(
         ctx,
-        startX + index * spacing - cardWidth / 2,
-        (mobile ? 184 : 22) + Math.abs(normalized) * 9,
+        startX + index * (compacted ? mobile ? 4 : 3 : spacing) - cardWidth / 2,
+        compacted
+          ? (mobile ? 300 : 185) + Math.abs(normalized) * 2
+          : (mobile ? 184 : 22) + Math.abs(normalized) * 9,
         null,
         cardWidth,
         cardHeight
@@ -2099,6 +2121,15 @@
   }
 
   function drawRoomHand(ctx, hand) {
+      const compacted = ["setup-guess", "guess", "setup-result", "dice-roll"].includes(roomState.phase);
+      if (compacted) {
+        const mobile = isMobileCanvas();
+        const spacing = mobile ? 4 : 3;
+        hand.forEach((type, index) => {
+          drawCard(ctx, (mobile ? 70 : 70) + index * spacing, mobile ? 1050 : 470, type, mobile ? 72 : 62, mobile ? 98 : 84, index * .01);
+        });
+        return;
+      }
       const layouts = getRoomCardLayouts(hand);
       const canPlay = roomState.phase === "play" && roomState.turnPlayerId === roomState.you;
       for (const layout of layouts) {

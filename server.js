@@ -257,11 +257,12 @@ function startRoomGame(room) {
     deck,
     turnOrder: players.map((peer) => peer.publicId),
     turnIndex: 0,
-    turnPlayerId: players[0].publicId,
+    turnPlayerId: null,
     round: 1,
-    phase: "play",
-    activeCard: null,
+    phase: "setup-guess",
+    activeCard: deck.splice(deck.findIndex((card) => !["troca", "coringa"].includes(card)), 1)[0],
     guesses: new Map(),
+    opening: true,
     lastResult: null,
     winnerId: null,
     swapOwnerId: null,
@@ -303,9 +304,14 @@ function broadcastGame(room, phase = room.game?.phase) {
       turnPlayerId: game.turnPlayerId,
       activeCard: phase === "result" || phase === "finished" ? game.activeCard : null,
       hasActiveCard: Boolean(game.activeCard),
-      guessCount: phase === "guess" ? game.guesses.size : undefined,
-      guessed: phase === "guess" ? game.guesses.has(peer.publicId) : false,
+      guessCount: ["guess", "setup-guess"].includes(phase) ? game.guesses.size : undefined,
+      guessed: ["guess", "setup-guess"].includes(phase) ? game.guesses.has(peer.publicId) : false,
       seconds: game.deadlineTimer ? Math.max(0, Math.ceil((game.deadlineAt - Date.now()) / 1000)) : null,
+      opening: game.opening,
+      setupGuesses: phase === "setup-result" || phase === "dice-roll"
+        ? Object.fromEntries(game.guesses)
+        : undefined,
+      dice: game.dice,
       guesses: phase === "result" || phase === "finished"
         ? Object.fromEntries(game.guesses)
         : undefined,
@@ -352,6 +358,14 @@ function scheduleDeadline(room) {
           broadcastGame(room);
           scheduleDeadline(room);
         }
+      } else if (game.phase === "setup-guess") {
+        const available = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga"];
+        for (const player of expected) {
+          if (!game.guesses.has(player.id)) {
+            game.guesses.set(player.id, available[Math.floor(Math.random() * available.length)]);
+          }
+        }
+        resolveOpening(room);
       } else if (game.phase === "guess") {
         const available = cardTypes.filter((type) => type !== game.activeCard);
         for (const player of expected) {
@@ -532,6 +546,7 @@ function resolveRound(room) {
     const guesser = game.players.get(id);
     if (guesser?.alive) outcomes.push(resolveEffect(game, game.activeCard, owner, guesser, guess === game.activeCard));
   }
+
   game.lastResult = {
     card: game.activeCard,
     ownerId: owner.id,
@@ -560,10 +575,56 @@ function resolveRound(room) {
   }
 }
 
+function resolveOpening(room) {
+  const game = room.game;
+  clearDeadlineTimer(game);
+  const correct = [...game.players.values()].filter((player) => game.guesses.get(player.id) === game.activeCard);
+  if (correct.length === 1) {
+    game.turnPlayerId = correct[0].id;
+    game.phase = "setup-result";
+    game.lastResult = { card: game.activeCard, ownerId: correct[0].id, guesses: Object.fromEntries(game.guesses), outcomes: [] };
+    broadcastGame(room, "setup-result");
+    room.timer = setTimeout(() => {
+      if (room.status !== "playing") return;
+      game.phase = "play";
+      game.opening = false;
+      game.activeCard = null;
+      game.guesses.clear();
+      game.lastResult = null;
+      broadcastGame(room);
+      scheduleDeadline(room);
+    }, 2_400);
+    return;
+  }
+  game.phase = "dice-roll";
+  game.dice = Object.fromEntries([...game.players.values()].map((player) => [player.id, 1 + Math.floor(Math.random() * 6)]));
+  const values = Object.values(game.dice);
+  if (values[0] === values[1]) {
+    broadcastGame(room, "dice-roll");
+    room.timer = setTimeout(() => resolveOpening(room), 700);
+    return;
+  }
+  const winnerIndex = values[0] > values[1] ? 0 : 1;
+  game.turnPlayerId = game.turnOrder[winnerIndex];
+  broadcastGame(room, "dice-roll");
+  room.timer = setTimeout(() => {
+    if (room.status !== "playing") return;
+    game.phase = "play";
+    game.opening = false;
+    game.activeCard = null;
+    game.guesses.clear();
+    broadcastGame(room);
+    scheduleDeadline(room);
+  }, 2_400);
+}
+
 function advanceIfNeeded(room) {
   const game = room.game;
   if (!game || room.status !== "playing") return;
-  if (game.phase === "guess") {
+  if (game.phase === "setup-guess") {
+    const expected = [...game.players.values()].filter((player) => player.alive);
+    if (expected.every((player) => game.guesses.has(player.id))) resolveOpening(room);
+  } else if (game.phase === "guess") {
     const expected = [...game.players.values()].filter((player) => player.alive && player.id !== game.turnPlayerId);
     if (expected.length === 0 || expected.every((player) => game.guesses.has(player.id))) resolveRound(room);
   } else if (game.phase === "play" && !game.players.get(game.turnPlayerId)?.alive) {
@@ -591,6 +652,15 @@ function handleRoomAction(peer, action) {
     scheduleDeadline(room);
     broadcastGame(room);
     scheduleDeadline(room);
+    advanceIfNeeded(room);
+    return;
+  }
+  if (action.action === "setup-guess") {
+    if (game.phase !== "setup-guess") throw new Error("A abertura já foi concluída.");
+    if (!["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga"].includes(action.guess)) throw new Error("Palpite inválido.");
+    if (game.guesses.has(player.id)) throw new Error("Seu palpite inicial já foi registrado.");
+    game.guesses.set(player.id, action.guess);
+    broadcastGame(room);
     advanceIfNeeded(room);
     return;
   }
