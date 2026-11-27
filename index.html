@@ -4,16 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173d35">
+  <meta name="application-version" content="1.1.0">
   <title>Blefe de Mesa — Cartas & Estratégia</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1.1.0">
 </head>
 <body>
   <main class="app">
     <header class="topbar">
-      <a class="brand" href="#" aria-label="Blefe de Mesa, início">
-        <span class="brand-mark" aria-hidden="true">♠</span>
-        <span>BLEFE <b>DE MESA</b></span>
-      </a>
+      <div class="brand-area">
+        <a class="brand" href="#" aria-label="Blefe de Mesa, início">
+          <span class="brand-mark" aria-hidden="true">♠</span>
+          <span>BLEFE <b>DE MESA</b></span>
+        </a>
+        <div class="version-info">
+          <span class="app-version" id="app-version"></span>
+          <span class="version-status" id="version-status" role="status" aria-live="polite"></span>
+          <button class="version-update" id="version-update" type="button" hidden></button>
+        </div>
+      </div>
       <div class="topbar-actions">
         <button class="text-button" id="sound-toggle" type="button" aria-pressed="true">♫ Som ligado</button>
         <button class="text-button" id="connection-log-button" type="button" hidden>Conexão: offline</button>
@@ -46,25 +54,9 @@
             <span>▣ <strong data-stat="cards"></strong> Cartas</span>
           </div>
         </section>
-        <div class="turn-tools">
-          <div class="turn-status">
-            <div class="round-indicator" id="round-indicator" aria-label="Rodada atual">
-              <span id="round-label">Abertura</span>
-              <strong id="round-value">1</strong>
-              <span id="round-completed">0 concluídas</span>
-            </div>
-            <div class="timer" id="timer" aria-label="Tempo restante" hidden>
-              <span class="timer-icon" aria-hidden="true">◷</span>
-              <strong id="timer-value">40</strong><span>s</span>
-            </div>
-          </div>
-          <div class="round-countdown" id="round-countdown" role="status" aria-live="polite" hidden>
-            <span>Próxima jogada</span>
-            <strong id="round-countdown-value">4</strong>
-            <span>s</span>
-          </div>
-          <button class="turn-tool-button hint-button" id="use-luck-button" type="button" hidden>✦ Usar sorte</button>
-          <button class="turn-tool-button swap-hands-button" id="swap-hands-button" type="button" hidden>🔄 Trocar mãos</button>
+        <div class="round-indicator" id="round-indicator" aria-label="Rodada atual">
+          <span id="round-label">Abertura</span>
+          <strong id="round-value">1</strong>
         </div>
         <section class="player-hud opponent-hud" id="opponent-hud" aria-label="Atributos do adversário" hidden>
           <div class="player-hud-heading"><span>Adversário</span><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
@@ -79,6 +71,19 @@
       <div class="game-workspace">
         <div class="table-wrap">
           <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
+          <div class="turn-tools">
+            <div class="timer" id="timer" aria-label="Tempo restante" hidden>
+              <span class="timer-icon" aria-hidden="true">◷</span>
+              <strong id="timer-value">40</strong><span>s</span>
+            </div>
+            <div class="round-countdown" id="round-countdown" role="status" aria-live="polite" hidden>
+              <span>Próxima jogada</span>
+              <strong id="round-countdown-value">4</strong>
+              <span>s</span>
+            </div>
+            <button class="turn-tool-button hint-button" id="use-luck-button" type="button" hidden>✦ Usar sorte</button>
+            <button class="turn-tool-button swap-hands-button" id="swap-hands-button" type="button" hidden>🔄 Trocar mãos</button>
+          </div>
           <div class="action-area" id="action-area" role="group" aria-label="Opções de palpite" hidden></div>
           <div class="table-overlay" id="table-overlay" hidden>
             <div class="table-feedback">
@@ -299,8 +304,9 @@
     <ol class="connection-log" id="connection-log" aria-live="polite"></ol>
   </dialog>
 
-  <script src="online.js"></script>
-  <script src="ai-policy.js"></script>
-  <script src="game.js"></script>
+  <script src="online.js?v=1.1.0"></script>
+  <script src="ai-policy.js?v=1.1.0"></script>
+  <script src="game.js?v=1.1.0"></script>
+  <script src="version-check.js?v=1.1.0"></script>
 </body>
 </html>

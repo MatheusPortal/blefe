@@ -55,6 +55,28 @@ button { font: inherit; }
   gap: 14px;
 }
 
+.brand-area, .version-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.app-version, .version-status { color: var(--muted); font-size: 11px; }
+.version-update {
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid rgba(201, 239, 116, .45);
+  border-radius: 6px;
+  color: var(--lime);
+  background: rgba(201, 239, 116, .1);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+.version-update:hover { background: rgba(201, 239, 116, .2); }
+.version-update[hidden] { display: none; }
+
 .brand {
   display: inline-flex;
   gap: 9px;
@@ -338,14 +360,16 @@ button { font: inherit; }
 .table-overlay[hidden] { display: none; }
 
 .turn-tools {
+  position: absolute;
+  z-index: 4;
+  top: 12px;
+  left: 14px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
 }
 
-.turn-status { display: flex; align-items: stretch; gap: 6px; }
 .round-indicator {
   display: grid;
   grid-template-columns: auto auto;
@@ -358,10 +382,10 @@ button { font: inherit; }
   color: #dce9d7;
   background: rgba(11, 24, 23, .86);
   font: 11px Consolas, "Courier New", monospace;
+  justify-self: center;
 }
 .round-indicator strong { color: var(--lime); font-size: 16px; }
 #round-value[hidden] { display: none; }
-#round-completed { grid-column: 1 / -1; color: var(--muted); font-size: 10px; white-space: nowrap; }
 
 .table-feedback {
   width: min(440px, 90%);
@@ -827,6 +851,9 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 @media (max-width: 650px) {
   .app { width: calc(100% - 8px); }
   .topbar { min-height: 45px; }
+  .topbar { flex-wrap: wrap; }
+  .brand-area { gap: 5px; }
+  .app-version, .version-status, .version-update { font-size: 9px; }
   .brand { font-size: 10px; }
   .brand-mark { width: 25px; height: 25px; }
   .text-button { font-size: 10px; }
@@ -839,10 +866,9 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
     margin: 0 auto;
     border-radius: 7px;
   }
-  .turn-tools { gap: 4px; }
+  .turn-tools { top: 9px; left: 9px; gap: 4px; }
   .round-indicator { padding: 4px 7px; font-size: 10px; }
   .round-indicator strong { font-size: 14px; }
-  #round-completed { font-size: 9px; }
   .timer { padding: 5px 8px; }
   .turn-tool-button { min-height: 26px; padding: 0 7px; font-size: 8px; }
   .round-countdown { gap: 3px; padding: 5px 8px; font-size: 9px; }
@@ -879,7 +905,7 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 
 @media (max-width: 900px) {
   .match-header { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .turn-tools { grid-column: 1 / -1; grid-row: 1; }
+  .round-indicator { grid-column: 1 / -1; grid-row: 1; }
   .game-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; }
   .game-chat-widget:not(.is-minimized) { height: 240px; }
 }

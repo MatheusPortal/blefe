@@ -49,7 +49,6 @@
   const roundIndicator = document.querySelector("#round-indicator");
   const roundLabel = document.querySelector("#round-label");
   const roundValue = document.querySelector("#round-value");
-  const roundCompleted = document.querySelector("#round-completed");
   const useLuckButton = document.querySelector("#use-luck-button");
   const swapHandsButton = document.querySelector("#swap-hands-button");
   const roundCountdown = document.querySelector("#round-countdown");
@@ -1565,7 +1564,7 @@
     drawTable();
     updatePlayerHud(ownHud, state.players.player, state.phase === "dealing" ? state.dealt.player : state.players.player.hand.length, !state.gameOver && state.startingPlayer === "player");
     updatePlayerHud(opponentHud, state.players.ai, state.phase === "dealing" ? state.dealt.ai : state.players.ai.hand.length, !state.gameOver && state.startingPlayer === "ai");
-    updateRoundIndicator(state.round, state.publicDiscards, !state.startingPlayer, Boolean(state.pendingJokerReveal));
+    updateRoundIndicator(state.round, !state.startingPlayer);
     updateTimer();
     roundCountdown.hidden = state.phase !== "result" || state.pauseSeconds <= 0;
     roundCountdownValue.textContent = String(state.pauseSeconds || RESULT_PAUSE_SECONDS);
@@ -2001,13 +2000,11 @@
       return roomState.players.filter((player) => player.id !== roomState.you);
   }
 
-  function updateRoundIndicator(round, discards, opening, jokerPending) {
-    const completed = Math.max(0, discards.length - 1 - (jokerPending ? 1 : 0));
+  function updateRoundIndicator(round, opening) {
     roundLabel.textContent = opening ? "Abertura" : "Rodada";
     roundValue.hidden = opening;
     roundValue.textContent = String(round);
-    roundCompleted.textContent = `${completed} ${completed === 1 ? "concluída" : "concluídas"}`;
-    roundIndicator.setAttribute("aria-label", `${opening ? "Abertura" : `Rodada ${round}`}, ${completed} ${completed === 1 ? "rodada concluída" : "rodadas concluídas"}`);
+    roundIndicator.setAttribute("aria-label", opening ? "Abertura" : `Rodada ${round}`);
   }
 
   function updatePlayerHud(element, player, cardCount, active) {
@@ -2032,7 +2029,7 @@
       const opponent = getRoomOpponents()[0];
       updatePlayerHud(ownHud, localPlayer, localPlayer?.handCount, roomState.phase !== "finished" && roomState.turnPlayerId === localPlayer?.id);
       updatePlayerHud(opponentHud, opponent, opponent?.handCount, roomState.phase !== "finished" && roomState.turnPlayerId === opponent?.id);
-      updateRoundIndicator(roomState.round, roomState.publicDiscards || [], roomState.opening, Boolean(roomState.jokerSelection));
+      updateRoundIndicator(roomState.round, roomState.opening);
       roundCountdown.hidden = !roomState.nextTurnAt;
       if (roomState.nextTurnAt) {
         roundCountdownValue.textContent = String(Math.max(0, Math.ceil((roomState.nextTurnAt - Date.now()) / 1000)));
@@ -2104,6 +2101,20 @@
     roomClockInterval = window.setInterval(tick, 250);
   }
 
+  function getTableLayout(mobile) {
+    return mobile
+      ? {
+        extra: { x: 150, y: 700, width: 96, height: 138 },
+        guesses: { player: { x: 190, y: 470 }, opponent: { x: 510, y: 470 }, width: 82, height: 118 },
+        dice: { player: { x: 270, y: 650 }, opponent: { x: 510, y: 650 } }
+      }
+      : {
+        extra: { x: 320, y: 275, width: 76, height: 108 },
+        guesses: { player: { x: 350, y: 165 }, opponent: { x: 692, y: 165 }, width: 58, height: 84 },
+        dice: { player: { x: 455, y: 326 }, opponent: { x: 645, y: 326 } }
+      };
+  }
+
   function drawRoomTable(ctx) {
       const mobile = isMobileCanvas();
       const width = canvasWidth;
@@ -2150,19 +2161,16 @@
       if (own && !own.eliminated) drawRoomHand(ctx, own.hand || []);
       drawRoomExtraDeck(ctx);
       drawRoomGuessMarkers(ctx);
-      if (roomState.phase === "dice-roll" && roomState.dice) {
-        const ids = roomState.players.map((player) => player.id);
-        drawDie(ctx, mobile ? 270 : 455, mobile ? 650 : 326, roomState.dice[ids[0]]);
-        drawDie(ctx, mobile ? 510 : 645, mobile ? 650 : 326, roomState.dice[ids[1]]);
+      if (roomState.phase === "dice-roll" && roomState.dice && opponent) {
+        const dice = getTableLayout(mobile).dice;
+        drawDie(ctx, dice.player.x, dice.player.y, roomState.dice[roomState.you]);
+        drawDie(ctx, dice.opponent.x, dice.opponent.y, roomState.dice[opponent.id]);
       }
 
       function drawRoomExtraDeck(ctx) {
         const mobile = isMobileCanvas();
         const count = roomState.extraDeckCount || 0;
-        const x = mobile ? 32 : 48;
-        const y = mobile ? 520 : 272;
-        const cardWidth = mobile ? 96 : 76;
-        const cardHeight = mobile ? 138 : 108;
+        const { x, y, width: cardWidth, height: cardHeight } = getTableLayout(mobile).extra;
         ctx.save();
         ctx.textAlign = "center";
         ctx.fillStyle = "rgba(226,238,221,.72)";
@@ -2192,22 +2200,18 @@
         const guesses = roomState.setupGuesses || roomState.guesses;
         if (!guesses) return;
         const mobile = isMobileCanvas();
+        const layout = getTableLayout(mobile).guesses;
         for (const [playerId, guess] of Object.entries(guesses)) {
           const player = roomState.players.find((candidate) => candidate.id === playerId);
           if (!player || !CARD_TYPES.includes(guess)) continue;
-          const position = roomState.you === playerId
-            ? { x: mobile ? 225 : 400, y: mobile ? 650 : 330 }
-            : (() => {
-              return roomState.players.length === 2
-                ? { x: mobile ? 555 : 640, y: mobile ? 650 : 330 }
-                : null;
-            })();
+          const position = roomState.you === playerId ? layout.player
+            : roomState.players.length === 2 ? layout.opponent : null;
           if (!position) continue;
-          drawCard(ctx, position.x, position.y, guess, mobile ? 72 : 58, mobile ? 102 : 82);
+          drawCard(ctx, position.x, position.y, guess, layout.width, layout.height);
           ctx.fillStyle = "rgba(226,238,221,.78)";
           ctx.font = `${mobile ? 12 : 8}px Consolas, monospace`;
           ctx.textAlign = "center";
-          ctx.fillText(player.nickname, position.x + (mobile ? 36 : 29), position.y - (mobile ? 12 : 8));
+          ctx.fillText(player.nickname, position.x + layout.width / 2, position.y - (mobile ? 12 : 8));
         }
       }
 
@@ -2494,10 +2498,7 @@
 
   function drawExtraDeck(ctx) {
     const mobile = isMobileCanvas();
-    const x = mobile ? 32 : 48;
-    const y = mobile ? 520 : 272;
-    const cardWidth = mobile ? 96 : 76;
-    const cardHeight = mobile ? 138 : 108;
+    const { x, y, width: cardWidth, height: cardHeight } = getTableLayout(mobile).extra;
     const canDraw = state.extraDeck.length > 0;
     ctx.save();
     ctx.textAlign = "center";
@@ -2729,10 +2730,9 @@
 
   function drawGuessMarker(ctx, playerKey, type) {
     const mobile = isMobileCanvas();
-    const x = mobile ? playerKey === "ai" ? 555 : 225 : playerKey === "ai" ? 640 : 400;
-    const y = mobile ? 650 : 330;
-    const width = mobile ? 82 : 58;
-    const height = mobile ? 118 : 84;
+    const layout = getTableLayout(mobile).guesses;
+    const { x, y } = playerKey === "ai" ? layout.opponent : layout.player;
+    const { width, height } = layout;
     ctx.save();
     ctx.fillStyle = "rgba(226, 238, 221, .68)";
     ctx.font = `${mobile ? 14 : 8}px Consolas, monospace`;
@@ -2924,13 +2924,9 @@
   }
 
   function drawDice(ctx) {
-    if (isMobileCanvas()) {
-      drawDie(ctx, 270, 650, state.dice.player);
-      drawDie(ctx, 510, 650, state.dice.ai);
-      return;
-    }
-    drawDie(ctx, 455, 326, state.dice.player);
-    drawDie(ctx, 645, 326, state.dice.ai);
+    const dice = getTableLayout(isMobileCanvas()).dice;
+    drawDie(ctx, dice.player.x, dice.player.y, state.dice.player);
+    drawDie(ctx, dice.opponent.x, dice.opponent.y, state.dice.ai);
   }
 
   function drawDie(ctx, x, y, value) {

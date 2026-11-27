@@ -8,6 +8,7 @@ const pileCode = source.slice(source.indexOf("  function drawDiscardPile("), sou
 const geometryCode = source.slice(source.indexOf("  function handCardGeometry("), source.indexOf("  function drawHandCard("));
 const roundCode = source.slice(source.indexOf("  function updateRoundIndicator("), source.indexOf("  function renderRoom("));
 const hudCode = source.slice(source.indexOf("  function updatePlayerHud("), source.indexOf("  function renderRoom("));
+const tableLayoutCode = source.slice(source.indexOf("  function getTableLayout("), source.indexOf("  function drawRoomTable("));
 
 test("carta jogada permanece no centro ao ser revelada, sobre a pilha", () => {
   for (const mobile of [false, true]) {
@@ -53,27 +54,43 @@ test("carta ampliada não encobre a carta central", () => {
   }
 });
 
-test("indicador distingue abertura, rodadas concluídas e Coringa pendente", () => {
+test("indicador mostra somente a abertura ou a rodada atual", () => {
   const roundLabel = {};
   const roundValue = {};
-  const roundCompleted = {};
   const indicator = { setAttribute(_name, value) { this.label = value; } };
   const update = vm.runInNewContext(`${roundCode}\nupdateRoundIndicator`, {
-    roundLabel, roundValue, roundCompleted, roundIndicator: indicator
+    roundLabel, roundValue, roundIndicator: indicator
   });
-  update(1, [], true, false);
+  update(1, true);
   assert.equal(roundLabel.textContent, "Abertura");
   assert.equal(roundValue.hidden, true);
-  assert.equal(roundCompleted.textContent, "0 concluídas");
-  update(2, ["leao", "peixe"], false, false);
+  assert.equal(indicator.label, "Abertura");
+  update(2, false);
   assert.equal(roundLabel.textContent, "Rodada");
   assert.equal(roundValue.textContent, "2");
-  assert.equal(roundCompleted.textContent, "1 concluída");
-  update(2, ["leao", "peixe", "coringa"], false, true);
-  assert.equal(roundCompleted.textContent, "1 concluída");
-  update(2, ["leao", "peixe", "coringa"], false, false);
-  assert.equal(roundCompleted.textContent, "2 concluídas");
-  assert.match(indicator.label, /Rodada 2, 2 rodadas concluídas/);
+  assert.equal(roundValue.hidden, false);
+  assert.equal(indicator.label, "Rodada 2");
+});
+
+test("monte extra e palpites preservam as laterais e não ficam sob os dados", () => {
+  const layoutFor = vm.runInNewContext(`${tableLayoutCode}\ngetTableLayout`);
+  const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x
+    && a.y < b.y + b.height && a.y + a.height > b.y;
+  for (const [mobile, width] of [[false, 1100], [true, 780]]) {
+    const layout = layoutFor(mobile);
+    const extra = { ...layout.extra, width: layout.extra.width + 14, height: layout.extra.height + 14 };
+    const guesses = [layout.guesses.player, layout.guesses.opponent]
+      .map((position) => ({ ...position, width: layout.guesses.width, height: layout.guesses.height }));
+    const dice = [layout.dice.player, layout.dice.opponent]
+      .map((position) => ({ x: position.x - 36, y: position.y - 36, width: 72, height: 72 }));
+    for (const card of [extra, ...guesses]) {
+      assert.ok(card.x >= width * .18 && card.x + card.width <= width * .82);
+      for (const die of dice) assert.equal(overlap(card, die), false);
+    }
+    assert.ok(extra.y + extra.height < (mobile ? 860 : 401));
+    for (const guess of guesses) assert.equal(overlap(extra, guess), false);
+    assert.equal(overlap(guesses[0], guesses[1]), false);
+  }
 });
 
 test("HUD mostra atributos e contagem pública do jogador e atualiza mudanças", () => {

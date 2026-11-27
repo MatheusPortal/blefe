@@ -29,7 +29,7 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 - No modo online, um jogador joga por turno e todos os demais adivinham simultaneamente.
 - Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ampliá-las e ver os efeitos em indicadores como nos cards das regras; clique para jogar. Ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
 - A carta jogada fica virada para baixo no centro até o palpite e é revelada no mesmo lugar, sobre a pilha crescente de cartas já reveladas.
-- Os atributos dos dois jogadores, a rodada atual, o total concluído e o cronômetro ficam na faixa acima da mesa. As opções de palpite aparecem dentro da mesa.
+- Os atributos dos jogadores e a rodada atual ficam acima da mesa. O cronômetro e as habilidades ficam dentro da mesa, enquanto o monte extra e os palpites ocupam a região central, deixando as laterais livres.
 - As opções de palpite formam um leque de cartas. Ao lado da mesa, o chat exibe eventos do sistema e resultados das cartas em cards; no modo offline, funciona como log sem envio de mensagens.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
 - Cada partida sorteia uma das três mesas: verde, azul ou vinho. No online, os dois jogadores veem a mesma mesa.
@@ -73,5 +73,9 @@ Para publicar o modo online no Render, use o Blueprint definido em `render.yaml`
 ## Versionamento e publicação
 
 O projeto é versionado localmente com Git na branch `main` e está conectado ao repositório [MatheusPortal/blefe](https://github.com/MatheusPortal/blefe). Para publicar novas versões no GitHub, autentique o GitHub neste computador e execute `git push -u origin main`.
+
+O cabeçalho mostra a versão carregada e, quando há uma versão mais recente publicada, oferece um botão para atualizar a página. A verificação ocorre ao abrir a página, a cada cinco minutos e ao voltar à aba ou recuperar a conexão. Atualizar durante uma partida exige confirmação. Ao abrir o arquivo diretamente, o jogo mostra a versão, mas não consegue verificar atualizações.
+
+Em cada publicação, atualize a versão com `npm version X.Y.Z --no-git-tag-version` e altere em `index.html` o valor da meta `application-version` e o parâmetro `v` dos arquivos CSS e JavaScript para a mesma versão. Isso permite detectar a atualização e carregar os arquivos da nova versão; o teste de versão verifica a consistência.
 
 O jogo também pode ser hospedado no Netlify como site estático para jogar offline: publique a pasta do projeto, usando a raiz como diretório de publicação. Não há etapa de build. O modo online requer o serviço de sinalização descrito acima.

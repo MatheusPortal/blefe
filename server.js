@@ -23,7 +23,8 @@ const staticFiles = new Map([
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
   ["/game.js", ["game.js", "text/javascript; charset=utf-8"]],
   ["/ai-policy.js", ["ai-policy.js", "text/javascript; charset=utf-8"]],
-  ["/online.js", ["online.js", "text/javascript; charset=utf-8"]]
+  ["/online.js", ["online.js", "text/javascript; charset=utf-8"]],
+  ["/version-check.js", ["version-check.js", "text/javascript; charset=utf-8"]]
 ]);
 
 function logEvent(event, details = {}) {
