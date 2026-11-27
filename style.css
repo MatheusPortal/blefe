@@ -356,7 +356,6 @@ button { font: inherit; }
   z-index: 6;
   bottom: 5%;
   left: 50%;
-  left: 43%;
   width: min(300px, 34vw);
   height: clamp(110px, 18%, 165px);
   transform: translateX(-50%);
@@ -416,7 +415,7 @@ button { font: inherit; }
   transform: none;
   transform-origin: 50% 100%;
   scroll-snap-align: center;
-  animation: card-enter .34s cubic-bezier(.2, .8, .2, 1) both;
+  animation: card-enter .34s cubic-bezier(.2, .8, .2, 1) backwards;
   animation-delay: calc(var(--fan-z) * 22ms);
   transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
 }
@@ -448,7 +447,22 @@ button { font: inherit; }
 }
 
 .guess-card:focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }
-.guess-card:disabled { opacity: .38; cursor: not-allowed; }
+.guess-card:disabled { opacity: .42; cursor: not-allowed; filter: saturate(.55); }
+.guess-card.is-eliminated {
+  opacity: .42;
+  filter: grayscale(.35) saturate(.55);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+.guess-card.is-eliminated::before {
+  position: absolute;
+  inset: 50% 9px auto;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(75, 42, 39, .75);
+  content: "";
+  transform: rotate(-12deg);
+}
 
 .hint-button {
   position: static;
@@ -583,11 +597,7 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
 }
 
 .game-chat-panel:hover, .game-chat-panel:focus-within { background: rgba(8, 20, 20, .72); }
-.game-shell.is-choosing .game-chat-widget {
-  width: min(205px, 22%);
-  height: min(145px, 23vh);
-  min-height: 92px;
-}
+.game-shell.is-choosing .game-chat-widget { width: min(280px, 28%); height: min(220px, 30vh); min-height: 140px; }
 .game-shell.is-choosing .game-chat-panel { background: rgba(8, 20, 20, .3); }
 .game-shell.is-choosing .game-chat-panel:hover,
 .game-shell.is-choosing .game-chat-panel:focus-within { background: rgba(8, 20, 20, .76); }
@@ -640,11 +650,7 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   min-height: 0;
 }
 
-.game-shell.is-choosing .game-chat-widget.is-minimized {
-  width: min(180px, 24%);
-  height: 44px;
-  min-height: 44px;
-}
+.game-shell.is-choosing .game-chat-widget.is-minimized { width: min(230px, 32%); height: 44px; min-height: 44px; }
 
 .game-chat-widget.is-minimized .game-panel-heading { margin-bottom: 0; }
 .game-chat-widget.is-minimized .chat-messages,
@@ -777,9 +783,14 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
     min-height: 112px;
     transform: none;
   }
+  .game-shell.is-choosing .game-chat-widget:not(.is-minimized) {
+    width: min(205px, 58%);
+    height: min(172px, 24svh);
+    min-height: 112px;
+  }
   .game-chat-widget.is-minimized { width: min(160px, 48%); height: auto; min-height: 0; }
   .game-shell.is-choosing .game-chat-widget.is-minimized {
-    width: min(145px, 42%);
+    width: min(160px, 48%);
     height: 38px;
     min-height: 38px;
     bottom: 128px;

@@ -1885,6 +1885,7 @@
       CARD_TYPES.forEach((type, index) => {
         const button = addGuessButton(type, () => submitGuess("player", type), index, CARD_TYPES.length);
         button.disabled = state.eliminated.includes(type);
+        button.classList.toggle("is-eliminated", state.eliminated.includes(type));
       });
     }
   }
@@ -1972,14 +1973,15 @@
       const own = getRoomPlayer();
       const opponents = getRoomOpponents();
       const positions = mobile
-        ? [{ x: 150, y: 95 }, { x: 630, y: 95 }, { x: 690, y: 300 }]
-        : [{ x: 250, y: 88 }, { x: 550, y: 74 }, { x: 850, y: 88 }];
+        ? [{ x: 150, y: 180 }, { x: 390, y: 95 }, { x: 630, y: 180 }]
+        : [{ x: 210, y: 92 }, { x: 550, y: 70 }, { x: 890, y: 92 }];
       opponents.forEach((player, index) => {
         if (!positions[index]) return;
         drawPlayerBadge(ctx, positions[index].x, positions[index].y, {
           ...player,
           hand: Array(player.handCount || 0).fill(null)
         }, `${player.nickname}${roomState.turnPlayerId === player.id ? " · JOGA" : ""}`, false, mobile);
+        drawOpponentMiniHand(ctx, player, positions[index].x, positions[index].y + (mobile ? 105 : 86), mobile);
       });
       if (own) {
         drawPlayerBadge(ctx, mobile ? 90 : 88, mobile ? 1410 : 568, {
@@ -1991,7 +1993,7 @@
       const activeOwner = roomState.players.find((player) => player.id === roomState.turnPlayerId);
       const centerY = mobile ? 650 : 326;
       drawCard(ctx, width / 2 - (mobile ? 62 : 50), centerY - (mobile ? 88 : 72),
-        roomState.activeCard, mobile ? 124 : 100, mobile ? 176 : 144);
+        roomState.activeCard || (roomState.lastResult ? roomState.lastResult.card : null), mobile ? 124 : 100, mobile ? 176 : 144);
       ctx.fillStyle = "#dce9d7";
       ctx.textAlign = "center";
       ctx.font = `${mobile ? 15 : 10}px Consolas, monospace`;
@@ -2004,7 +2006,7 @@
         centerY + (mobile ? 120 : 96)
       );
 
-      if (own && !own.eliminated && roomState.phase !== "guess") drawRoomHand(ctx, own.hand || []);
+      if (own && !own.eliminated) drawRoomHand(ctx, own.hand || []);
       if (roomState.lastResult) {
         ctx.fillStyle = "rgba(8,20,20,.75)";
         roundRect(ctx, mobile ? 165 : 350, centerY - (mobile ? 245 : 170), mobile ? 450 : 400, mobile ? 72 : 52, 9);
@@ -2013,6 +2015,22 @@
         ctx.font = `bold ${mobile ? 16 : 11}px 'Segoe UI', sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(`${CARDS[roomState.lastResult.card].emoji} ${CARDS[roomState.lastResult.card].name}`, width / 2, centerY - (mobile ? 218 : 148));
+      }
+
+      function drawOpponentMiniHand(ctx, player, x, y, mobile) {
+        const count = Math.min(player.handCount || 0, 8);
+        const cardWidth = mobile ? 30 : 23;
+        const cardHeight = mobile ? 43 : 32;
+        const gap = mobile ? -8 : -7;
+        const totalWidth = cardWidth + Math.max(0, count - 1) * (cardWidth + gap);
+        ctx.save();
+        ctx.fillStyle = "rgba(8, 22, 19, .44)";
+        roundRect(ctx, x - totalWidth / 2 - 8, y - 6, totalWidth + 16, cardHeight + 12, 8);
+        ctx.fill();
+        for (let index = 0; index < count; index += 1) {
+          drawCard(ctx, x - totalWidth / 2 + index * (cardWidth + gap), y, null, cardWidth, cardHeight, (index - (count - 1) / 2) * .035);
+        }
+        ctx.restore();
       }
   }
 

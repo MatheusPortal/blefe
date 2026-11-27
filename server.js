@@ -302,6 +302,7 @@ function broadcastGame(room, phase = room.game?.phase) {
       round: game.round,
       turnPlayerId: game.turnPlayerId,
       activeCard: phase === "result" || phase === "finished" ? game.activeCard : null,
+      hasActiveCard: Boolean(game.activeCard),
       guessCount: phase === "guess" ? game.guesses.size : undefined,
       guessed: phase === "guess" ? game.guesses.has(peer.publicId) : false,
       seconds: game.deadlineTimer ? Math.max(0, Math.ceil((game.deadlineAt - Date.now()) / 1000)) : null,
