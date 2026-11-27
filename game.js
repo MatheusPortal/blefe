@@ -82,6 +82,7 @@
   let onlineNames = null;
   let roomSession = null;
   let roomState = null;
+  let roomClockInterval = null;
   let systemEventSequence = 0;
   let lastSystemEventId = 0;
   let swapRequestPending = false;
@@ -232,6 +233,7 @@
     if (!snapshot || !Array.isArray(snapshot.players) || !snapshot.you) return false;
     onlineRole = "room";
     roomState = snapshot;
+    updateRoomClock();
     state = null;
     if (gameShell.hidden) showGameView();
     render();
@@ -328,6 +330,8 @@
     window.clearInterval(diceInterval);
     window.clearInterval(roundPauseInterval);
     window.clearTimeout(aiTimeout);
+    window.clearInterval(roomClockInterval);
+    roomClockInterval = null;
     stopBackgroundMusic();
   }
 
@@ -1984,6 +1988,25 @@
           : `${roomState.round}: ${roomState.phase === "guess" ? "adivinhem a carta" : "resultado"}.`);
   }
 
+  function updateRoomClock() {
+    window.clearInterval(roomClockInterval);
+    roomClockInterval = null;
+    if (!roomState?.deadlineAt) return;
+    const tick = () => {
+      if (!roomState?.deadlineAt) return;
+      const seconds = Math.max(0, Math.ceil((roomState.deadlineAt - Date.now()) / 1000));
+      timerValue.textContent = String(seconds);
+      timer.classList.toggle("is-low", seconds <= 10);
+      timer.hidden = false;
+    };
+    tick();
+    roomClockInterval = window.setInterval(tick, 250);
+  }
+
+  window.setInterval(() => {
+    if (roomState && onlineRole === "room" && roomState.phase === "play") drawTable();
+  }, 80);
+
   function drawRoomTable(ctx) {
       const mobile = isMobileCanvas();
       const width = canvasWidth;
@@ -2023,7 +2046,7 @@
       drawCard(ctx, width / 2 - (mobile ? 62 : 50), centerY - (mobile ? 88 : 72),
         roomState.phase === "setup-result" || roomState.phase === "dice-roll"
           ? roomState.lastResult?.card || roomState.activeCard
-          : roomState.activeCard || (roomState.lastResult ? roomState.lastResult.card : null), mobile ? 124 : 100, mobile ? 176 : 144);
+          : roomState.activeCard || roomState.tableCard, mobile ? 124 : 100, mobile ? 176 : 144);
       ctx.fillStyle = "#dce9d7";
       ctx.textAlign = "center";
       ctx.font = `${mobile ? 15 : 10}px Consolas, monospace`;
@@ -2062,8 +2085,18 @@
         ctx.font = `${mobile ? 15 : 9}px Consolas, monospace`;
         ctx.fillText("EXTRAS", x + cardWidth / 2, y - 15);
         if (count > 0) {
-          drawCard(ctx, x + 4, y + 4, null, cardWidth, cardHeight);
-          drawCard(ctx, x, y, null, cardWidth, cardHeight);
+          const visibleLayers = Math.min(8, Math.max(2, Math.ceil(Math.sqrt(count))));
+          const pulse = roomState.phase === "play" ? Math.sin(performance.now() / 280) * 1.5 : 0;
+          for (let index = visibleLayers - 1; index >= 0; index -= 1) {
+            drawCard(
+              ctx,
+              x + index * 2 + pulse * (index / visibleLayers),
+              y + index * 2 - pulse * (index / visibleLayers),
+              null,
+              cardWidth,
+              cardHeight
+            );
+          }
         }
 
         ctx.fillStyle = "#c9ef74";
@@ -2106,10 +2139,10 @@
           const player = roomState.players.find((candidate) => candidate.id === playerId);
           if (!player || !CARD_TYPES.includes(guess)) continue;
           const position = roomState.you === playerId
-            ? { x: mobile ? 150 : 170, y: mobile ? 1150 : 445 }
+            ? { x: mobile ? 225 : 400, y: mobile ? 650 : 330 }
             : (() => {
               return roomState.players.length === 2
-                ? { x: mobile ? 570 : 790, y: mobile ? 280 : 205 }
+                ? { x: mobile ? 555 : 640, y: mobile ? 650 : 330 }
                 : null;
             })();
           if (!position) continue;
@@ -2118,6 +2151,10 @@
           ctx.font = `${mobile ? 12 : 8}px Consolas, monospace`;
           ctx.textAlign = "center";
           ctx.fillText(player.nickname, position.x + (mobile ? 36 : 29), position.y - (mobile ? 12 : 8));
+        }
+
+        function animateRoomTable() {
+          if (roomState && onlineRole === "room" && roomState.phase === "play") drawTable();
         }
       }
 

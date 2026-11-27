@@ -265,6 +265,7 @@ function startRoomGame(room) {
     guesses: new Map(),
     opening: true,
     lastResult: null,
+    tableCard: null,
     winnerId: null,
     swapOwnerId: null,
     jokerSelection: null,
@@ -305,16 +306,18 @@ function broadcastGame(room, phase = room.game?.phase) {
       round: game.round,
       turnPlayerId: game.turnPlayerId,
       activeCard: ["setup-result", "dice-roll", "result", "finished", "joker-select"].includes(phase) ? game.activeCard : null,
+      tableCard: game.tableCard,
       hasActiveCard: Boolean(game.activeCard),
       guessCount: ["guess", "setup-guess"].includes(phase) ? game.guesses.size : undefined,
       guessed: ["guess", "setup-guess"].includes(phase) ? game.guesses.has(peer.publicId) : false,
       seconds: game.deadlineTimer ? Math.max(0, Math.ceil((game.deadlineAt - Date.now()) / 1000)) : null,
+      deadlineAt: game.deadlineAt || null,
       opening: game.opening,
       setupGuesses: phase === "setup-result" || phase === "dice-roll"
         ? Object.fromEntries(game.guesses)
         : undefined,
       dice: game.dice,
-      guesses: phase === "result" || phase === "finished"
+      guesses: phase === "guess" || phase === "result" || phase === "finished"
         ? Object.fromEntries(game.guesses)
         : undefined,
       lastResult: game.lastResult && (phase === "result" || phase === "finished" || phase === "joker-select") ? {
@@ -594,6 +597,7 @@ function resolveRound(room) {
       }));
     })
   };
+  game.tableCard = game.activeCard;
   game.phase = "result";
   if (game.jokerSelection) game.phase = "joker-select";
   if (!game.jokerSelection) checkEliminationsAndWinner(room);
@@ -612,6 +616,7 @@ function resolveOpening(room) {
     game.turnPlayerId = correct[0].id;
     game.phase = "setup-result";
     game.lastResult = { card: game.activeCard, ownerId: correct[0].id, guesses: Object.fromEntries(game.guesses), outcomes: [] };
+    game.tableCard = game.activeCard;
     broadcastGame(room, "setup-result");
     room.timer = setTimeout(() => {
       if (room.status !== "playing") return;
@@ -626,6 +631,7 @@ function resolveOpening(room) {
     return;
   }
   game.phase = "dice-roll";
+  game.tableCard = game.activeCard;
   game.dice = Object.fromEntries([...game.players.values()].map((player) => [player.id, 1 + Math.floor(Math.random() * 6)]));
   const values = Object.values(game.dice);
   if (values[0] === values[1]) {
@@ -689,6 +695,7 @@ function handleRoomAction(peer, action) {
     if (game.phase !== "play" || game.turnPlayerId !== player.id) throw new Error("Não é a sua vez de jogar.");
     if (!Number.isInteger(action.cardIndex) || action.cardIndex < 0 || action.cardIndex >= player.hand.length) throw new Error("Índice de carta inválido.");
     game.activeCard = player.hand.splice(action.cardIndex, 1)[0];
+    game.tableCard = null;
     game.guesses.clear();
     game.phase = "guess";
     scheduleDeadline(room);
