@@ -36,26 +36,55 @@
     </section>
 
     <section class="game-shell" id="game-shell" aria-label="Jogo de cartas" hidden>
-      <div class="table-wrap">
-        <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
+      <header class="match-header" aria-label="Informações da partida">
+        <section class="player-hud" id="own-hud" aria-label="Seus atributos" hidden>
+          <div class="player-hud-heading"><span>Você</span><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
+          <div class="player-hud-stats">
+            <span>♥ <strong data-stat="hp"></strong> Vida</span>
+            <span>⬡ <strong data-stat="shields"></strong> Escudo</span>
+            <span>✦ <strong data-stat="luck"></strong> Sorte</span>
+            <span>▣ <strong data-stat="cards"></strong> Cartas</span>
+          </div>
+        </section>
         <div class="turn-tools">
-          <div class="timer" id="timer" aria-label="Tempo restante" hidden>
-            <span class="timer-icon" aria-hidden="true">◷</span>
-            <strong id="timer-value">40</strong><span>s</span>
+          <div class="turn-status">
+            <div class="round-indicator" id="round-indicator" aria-label="Rodada atual">
+              <span id="round-label">Abertura</span>
+              <strong id="round-value">1</strong>
+              <span id="round-completed">0 concluídas</span>
+            </div>
+            <div class="timer" id="timer" aria-label="Tempo restante" hidden>
+              <span class="timer-icon" aria-hidden="true">◷</span>
+              <strong id="timer-value">40</strong><span>s</span>
+            </div>
+          </div>
+          <div class="round-countdown" id="round-countdown" role="status" aria-live="polite" hidden>
+            <span>Próxima jogada</span>
+            <strong id="round-countdown-value">4</strong>
+            <span>s</span>
           </div>
           <button class="turn-tool-button hint-button" id="use-luck-button" type="button" hidden>✦ Usar sorte</button>
           <button class="turn-tool-button swap-hands-button" id="swap-hands-button" type="button" hidden>🔄 Trocar mãos</button>
         </div>
-        <div class="round-countdown" id="round-countdown" role="status" aria-live="polite" hidden>
-          <span>Próxima jogada</span>
-          <strong id="round-countdown-value">4</strong>
-          <span>s</span>
-        </div>
-        <div class="action-area" id="action-area" role="group" aria-label="Opções de palpite" hidden></div>
-        <div class="table-overlay" id="table-overlay" hidden>
-          <div class="table-feedback">
-            <p id="table-result" role="status" aria-live="polite" aria-atomic="true"></p>
-            <button class="primary-button" id="play-again-button" type="button" hidden>Jogar novamente</button>
+        <section class="player-hud opponent-hud" id="opponent-hud" aria-label="Atributos do adversário" hidden>
+          <div class="player-hud-heading"><span>Adversário</span><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
+          <div class="player-hud-stats">
+            <span>♥ <strong data-stat="hp"></strong> Vida</span>
+            <span>⬡ <strong data-stat="shields"></strong> Escudo</span>
+            <span>✦ <strong data-stat="luck"></strong> Sorte</span>
+            <span>▣ <strong data-stat="cards"></strong> Cartas</span>
+          </div>
+        </section>
+      </header>
+      <div class="game-workspace">
+        <div class="table-wrap">
+          <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
+          <div class="action-area" id="action-area" role="group" aria-label="Opções de palpite" hidden></div>
+          <div class="table-overlay" id="table-overlay" hidden>
+            <div class="table-feedback">
+              <p id="table-result" role="status" aria-live="polite" aria-atomic="true"></p>
+              <button class="primary-button" id="play-again-button" type="button" hidden>Jogar novamente</button>
+            </div>
           </div>
         </div>
         <div class="game-chat-widget" id="game-chat-widget" hidden>

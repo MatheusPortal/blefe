@@ -39,7 +39,10 @@
     elefante: ["🐘", "Elefante"], tartaruga: ["🐢", "Tartaruga"],
     troca: ["🔄", "Troca"], coringa: ["🃏", "Coringa"]
   };
-  const chatAttributes = { hp: ["Vida", "Vidas"], luck: ["Sorte", "Sorte"], shields: ["Escudo", "Escudos"], cards: ["Carta", "Cartas"] };
+  const chatAttributes = {
+    hp: ["Vida", "Vidas", "❤️"], luck: ["Sorte", "Sorte", "🍀"],
+    shields: ["Escudo", "Escudos", "🛡️"], cards: ["Carta", "Cartas", "🃏"]
+  };
 
   async function updateOnlinePlayerCount() {
     try {
@@ -150,9 +153,17 @@
         playedBy: message.playedBy,
         guesses: [{ name: message.guesser, type: message.guess, correct: message.correct }],
         attributes: message.attributes,
-        note: message.effectSummary
+        note: meaningfulEffectNote(message.effectSummary)
       });
     }
+  }
+
+  function meaningfulEffectNote(summary) {
+    if (!summary) return "";
+    const details = summary.split(/;\s*|,\s*/).filter((part) => (
+      /bloquead|nenhuma carta comprada|vida já está cheia|sem escudo para perder|sem dano|pode trocar as mãos|revela até 2 cartas|trocou uma carta/i.test(part)
+    ));
+    return [...new Set(details)].join("; ");
   }
 
   function appendResultCard(result, existingItem = null) {
@@ -190,26 +201,33 @@
         ? `${guess.name} palpitou ${chatCards[guess.type][1]}`
         : `${guess.name} palpitou`;
       const status = document.createElement("strong");
-      status.className = guess.correct ? "is-gain" : "is-loss";
+      status.className = `chat-result-outcome ${guess.correct ? "is-correct" : "is-wrong"}`;
       status.textContent = guess.correct ? "ACERTO" : "ERRO";
       row.append(label, status);
       outcomes.append(row);
     }
+    const changesByPlayer = new Map();
     for (const change of result.attributes || []) {
-      const attributeInfo = chatAttributes[change.attribute];
-      if (!attributeInfo) continue;
+      if (!chatAttributes[change.attribute]) continue;
+      if (!changesByPlayer.has(change.playerName)) changesByPlayer.set(change.playerName, []);
+      changesByPlayer.get(change.playerName).push(change);
+    }
+    for (const [playerName, changes] of changesByPlayer) {
       const row = document.createElement("div");
-      row.className = `chat-result-attribute ${change.attribute}`;
+      row.className = "chat-result-change-group";
       const player = document.createElement("span");
       player.className = "chat-result-player";
-      player.textContent = change.playerName;
-      const value = document.createElement("strong");
-      value.className = change.value > 0 ? "is-gain" : "is-loss";
-      value.textContent = `${change.value > 0 ? "+" : "−"}${Math.abs(change.value)}`;
-      const label = document.createElement("span");
-      label.className = "chat-result-label";
-      label.textContent = Math.abs(change.value) === 1 ? attributeInfo[0] : attributeInfo[1];
-      row.append(player, value, label);
+      player.textContent = playerName;
+      const chips = document.createElement("div");
+      chips.className = "chat-result-chips";
+      for (const change of changes) {
+        const [singular, plural, icon] = chatAttributes[change.attribute];
+        const chip = document.createElement("span");
+        chip.className = `chat-result-chip ${change.value > 0 ? "is-gain" : "is-loss"}`;
+        chip.textContent = `${icon} ${change.value > 0 ? "+" : "−"}${Math.abs(change.value)} ${Math.abs(change.value) === 1 ? singular : plural}`;
+        chips.append(chip);
+      }
+      row.append(player, chips);
       outcomes.append(row);
     }
     if (result.note) {

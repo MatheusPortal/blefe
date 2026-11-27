@@ -46,10 +46,16 @@
   const actionArea = document.querySelector("#action-area");
   const timer = document.querySelector("#timer");
   const timerValue = document.querySelector("#timer-value");
+  const roundIndicator = document.querySelector("#round-indicator");
+  const roundLabel = document.querySelector("#round-label");
+  const roundValue = document.querySelector("#round-value");
+  const roundCompleted = document.querySelector("#round-completed");
   const useLuckButton = document.querySelector("#use-luck-button");
   const swapHandsButton = document.querySelector("#swap-hands-button");
   const roundCountdown = document.querySelector("#round-countdown");
   const roundCountdownValue = document.querySelector("#round-countdown-value");
+  const ownHud = document.querySelector("#own-hud");
+  const opponentHud = document.querySelector("#opponent-hud");
   const rulesDialog = document.querySelector("#rules-dialog");
   const cardRuleDetails = new Map(Array.from(rulesDialog.querySelectorAll(".rules-card"), (card) => [
     card.querySelector("h4").textContent.trim(),
@@ -88,7 +94,6 @@
   let dealInterval;
   let diceInterval;
   let roundPauseInterval;
-  let attributeAnimationFrame;
   let resultAnimationFrame;
   let musicInterval;
   let audioContext;
@@ -199,9 +204,7 @@
     clearGameTimers();
     if (roomAnimationFrame) window.cancelAnimationFrame(roomAnimationFrame);
     roomAnimationFrame = null;
-    if (attributeAnimationFrame) window.cancelAnimationFrame(attributeAnimationFrame);
     if (resultAnimationFrame) window.cancelAnimationFrame(resultAnimationFrame);
-    attributeAnimationFrame = null;
     resultAnimationFrame = null;
     state = null;
     onlineRole = null;
@@ -577,11 +580,6 @@
       message: "Embaralhando as cartas...",
       log: "Distribuindo a mão."
     };
-    if (attributeAnimationFrame) {
-      window.cancelAnimationFrame(attributeAnimationFrame);
-      attributeAnimationFrame = null;
-    }
-
     state.jokerDistributed = state.players.player.hand.includes("coringa") || state.players.ai.hand.includes("coringa");
     state.aiHasJoker = state.players.ai.hand.includes("coringa");
 
@@ -1007,7 +1005,6 @@
     ];
     triggerVisualEffect("swap");
     playSwapSound();
-    animateAttributeChanges();
     render();
     return true;
   }
@@ -1285,30 +1282,6 @@
     return changes;
   }
 
-  function animateAttributeChanges() {
-    if (!state.attributeAnimations.length) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      state.attributeAnimations = [];
-      return;
-    }
-    const finishAt = Math.max(...state.attributeAnimations.map((item) => item.startedAt)) + 1100;
-    const drawFrame = () => {
-      if (!state || !state.attributeAnimations.length) {
-        attributeAnimationFrame = null;
-        return;
-      }
-      if (performance.now() >= finishAt) {
-        state.attributeAnimations = [];
-        attributeAnimationFrame = null;
-        drawTable();
-        return;
-      }
-      drawTable();
-      attributeAnimationFrame = window.requestAnimationFrame(drawFrame);
-    };
-    attributeAnimationFrame = window.requestAnimationFrame(drawFrame);
-  }
-
   function resolveGuess(guesserKey, guess) {
     if (state.gameOver || !state.pending) return;
     const { owner, type: actualType } = state.pending;
@@ -1330,7 +1303,6 @@
       attribute: animation.attribute,
       value: animation.value
     }));
-    animateAttributeChanges();
     state.phase = "result";
     state.lastReveal = {
       id: ++state.resultSequence,
@@ -1591,6 +1563,9 @@
     }
     if (!state) return;
     drawTable();
+    updatePlayerHud(ownHud, state.players.player, state.phase === "dealing" ? state.dealt.player : state.players.player.hand.length, !state.gameOver && state.startingPlayer === "player");
+    updatePlayerHud(opponentHud, state.players.ai, state.phase === "dealing" ? state.dealt.ai : state.players.ai.hand.length, !state.gameOver && state.startingPlayer === "ai");
+    updateRoundIndicator(state.round, state.publicDiscards, !state.startingPlayer, Boolean(state.pendingJokerReveal));
     updateTimer();
     roundCountdown.hidden = state.phase !== "result" || state.pauseSeconds <= 0;
     roundCountdownValue.textContent = String(state.pauseSeconds || RESULT_PAUSE_SECONDS);
@@ -1791,7 +1766,6 @@
     state.attributeAnimations = previousAttributes && previousRound === snapshot.round
       ? createAttributeAnimations(previousAttributes)
       : [];
-    animateAttributeChanges();
     render();
     return true;
   }
@@ -2027,9 +2001,38 @@
       return roomState.players.filter((player) => player.id !== roomState.you);
   }
 
+  function updateRoundIndicator(round, discards, opening, jokerPending) {
+    const completed = Math.max(0, discards.length - 1 - (jokerPending ? 1 : 0));
+    roundLabel.textContent = opening ? "Abertura" : "Rodada";
+    roundValue.hidden = opening;
+    roundValue.textContent = String(round);
+    roundCompleted.textContent = `${completed} ${completed === 1 ? "concluída" : "concluídas"}`;
+    roundIndicator.setAttribute("aria-label", `${opening ? "Abertura" : `Rodada ${round}`}, ${completed} ${completed === 1 ? "rodada concluída" : "rodadas concluídas"}`);
+  }
+
+  function updatePlayerHud(element, player, cardCount, active) {
+    element.hidden = !player;
+    if (!player) return;
+    element.querySelector(".player-hud-name").textContent = player.nickname || player.name;
+    element.querySelector(".player-hud-turn").hidden = !active;
+    for (const [stat, value] of Object.entries({ hp: player.hp, shields: player.shields, luck: player.luck, cards: cardCount })) {
+      const target = element.querySelector(`[data-stat="${stat}"]`);
+      const next = String(value);
+      if (target.textContent && target.textContent !== next && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        target.animate([{ color: "#c9ef74", transform: "scale(1.25)" }, { color: "inherit", transform: "scale(1)" }], { duration: 600 });
+      }
+      target.textContent = next;
+    }
+  }
+
   function renderRoom() {
       if (!roomState) return;
       drawTable();
+      const localPlayer = getRoomPlayer();
+      const opponent = getRoomOpponents()[0];
+      updatePlayerHud(ownHud, localPlayer, localPlayer?.handCount, roomState.phase !== "finished" && roomState.turnPlayerId === localPlayer?.id);
+      updatePlayerHud(opponentHud, opponent, opponent?.handCount, roomState.phase !== "finished" && roomState.turnPlayerId === opponent?.id);
+      updateRoundIndicator(roomState.round, roomState.publicDiscards || [], roomState.opening, Boolean(roomState.jokerSelection));
       roundCountdown.hidden = !roomState.nextTurnAt;
       if (roomState.nextTurnAt) {
         roundCountdownValue.textContent = String(Math.max(0, Math.ceil((roomState.nextTurnAt - Date.now()) / 1000)));
@@ -2116,18 +2119,7 @@
       const opponents = getRoomOpponents();
       const opponent = opponents[0];
       if (opponent) {
-        const position = mobile ? { x: 690, y: 76 } : { x: 1012, y: 78 };
-        drawPlayerBadge(ctx, position.x, position.y, {
-          ...opponent,
-          hand: Array(opponent.handCount || 0).fill(null)
-        }, `${opponent.nickname}${roomState.turnPlayerId === opponent.id ? " · JOGA" : ""}`, false, mobile);
         drawRoomOpponentHand(ctx, opponent);
-      }
-      if (own) {
-        drawPlayerBadge(ctx, mobile ? 90 : 88, mobile ? 1410 : 568, {
-          ...own,
-          hand: own.hand || []
-        }, `${own.nickname || "VOCÊ"}${own.eliminated ? " · FORA" : ""}`, true, mobile);
       }
 
       const activeOwner = roomState.players.find((player) => player.id === roomState.turnPlayerId);
@@ -2372,14 +2364,11 @@
     ctx.ellipse(width / 2, height / 2 + 5, 466, 239, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    drawPlayerPanel(ctx, 1012, 78, state.players.ai, onlineRole ? state.players.ai.name : "IA", false);
-    drawPlayerPanel(ctx, 88, 568, state.players.player, onlineRole ? state.players.player.name : "VOCÊ", true);
     drawExtraDeck(ctx);
     drawAiHand(ctx);
     drawCenter(ctx, width / 2, 326);
     drawPlayerHand(ctx);
     drawGuessMarkers(ctx);
-    drawAttributeAnimations(ctx);
     drawVisualEffect(ctx);
 
     const phaseText = state.phase === "setup-wait"
@@ -2423,14 +2412,11 @@
     ctx.ellipse(width / 2, height / 2, width * .46, height * .46, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    drawMobilePlayerPanel(ctx, 690, 76, state.players.ai, onlineRole ? state.players.ai.name : "IA", false);
-    drawMobilePlayerPanel(ctx, 90, 1410, state.players.player, onlineRole ? state.players.player.name : "VOCÊ", true);
     drawExtraDeck(ctx);
     drawAiHand(ctx);
     drawCenter(ctx, width / 2, 650);
     drawPlayerHand(ctx);
     drawGuessMarkers(ctx);
-    drawAttributeAnimations(ctx);
     drawVisualEffect(ctx);
 
     const phaseText = state.phase === "setup-wait"
@@ -2468,119 +2454,6 @@
     ctx.textBaseline = "middle";
     ctx.fillText(text, x, y - height / 2 + (mobile ? 7 : 5));
     ctx.restore();
-  }
-
-  function drawMobilePlayerPanel(ctx, x, y, player, label, isPlayer) {
-    drawPlayerBadge(ctx, x, y, player, label, isPlayer, true);
-  }
-
-  function drawPlayerPanel(ctx, x, y, player, label, isPlayer) {
-    drawPlayerBadge(ctx, x, y, player, label, isPlayer, false);
-  }
-
-  function drawPlayerBadge(ctx, x, y, player, label, isPlayer, mobile) {
-    const radius = mobile ? 43 : 35;
-    const ringRadius = radius - (mobile ? 6 : 5);
-    ctx.save();
-    ctx.fillStyle = "rgba(15, 33, 29, .78)";
-    ctx.shadowColor = "rgba(0, 0, 0, .26)";
-    ctx.shadowBlur = mobile ? 18 : 12;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowColor = "transparent";
-    ctx.strokeStyle = isPlayer ? "rgba(201, 239, 116, .55)" : "rgba(231, 243, 229, .2)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(x, y, ringRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(239, 128, 111, .24)";
-    ctx.lineWidth = mobile ? 6 : 5;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(x, y, ringRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * player.hp / 5);
-    ctx.strokeStyle = "#ef806f";
-    ctx.lineWidth = mobile ? 6 : 5;
-    ctx.lineCap = "round";
-    ctx.stroke();
-
-    ctx.textAlign = "center";
-    ctx.fillStyle = isPlayer ? "#c9ef74" : "#b5d5c7";
-    ctx.font = `${mobile ? 15 : 9}px Consolas, monospace`;
-    ctx.fillText(label, x, y - radius - (mobile ? 8 : 7), mobile ? 140 : 160);
-    ctx.fillStyle = "#e5eddf";
-    ctx.font = `bold ${mobile ? 25 : 19}px 'Segoe UI', sans-serif`;
-    ctx.fillText(String(player.hand.length), x, y + (mobile ? 7 : 6));
-    ctx.fillStyle = "#a9bdba";
-    ctx.font = `${mobile ? 9 : 7}px Consolas, monospace`;
-    ctx.fillText("CARTAS", x, y + (mobile ? 20 : 16));
-    const pillY = y + radius + (mobile ? 12 : 10);
-    const pillWidth = mobile ? 104 : 74;
-    ctx.fillStyle = "rgba(8, 22, 19, .7)";
-    roundRect(ctx, x - pillWidth / 2, pillY - (mobile ? 10 : 8), pillWidth, mobile ? 20 : 16, 8);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(224, 238, 233, .12)";
-    roundRect(ctx, x - pillWidth / 2, pillY - (mobile ? 10 : 8), pillWidth, mobile ? 20 : 16, 8);
-    ctx.stroke();
-    ctx.fillStyle = "#ef806f";
-    ctx.font = `${mobile ? 12 : 8}px Consolas, monospace`;
-    ctx.textAlign = "left";
-    ctx.fillText(`♥ ${player.hp}`, x - pillWidth / 2 + 8, pillY + (mobile ? 4 : 3));
-    ctx.fillStyle = "#d9c477";
-    ctx.textAlign = "right";
-    ctx.fillText(`✦ ${player.luck}  ⬡ ${player.shields}`, x + pillWidth / 2 - 8, pillY + (mobile ? 4 : 3));
-    ctx.restore();
-  }
-
-  function drawAttributeAnimations(ctx) {
-    if (!state.attributeAnimations.length) return;
-    const mobile = isMobileCanvas();
-    const now = performance.now();
-    const badgeRadius = mobile ? 43 : 35;
-    const positions = mobile
-      ? { ai: { x: 690, y: 76 }, player: { x: 90, y: 1410 } }
-      : { ai: { x: 1012, y: 78 }, player: { x: 88, y: 568 } };
-
-    state.attributeAnimations.forEach((animation, index) => {
-      const progress = (now - animation.startedAt) / 1100;
-      if (progress < 0 || progress >= 1) return;
-      const position = positions[animation.playerKey];
-      const alpha = 1 - progress;
-      const animationPlayer = state.players[animation.playerKey];
-      const playerLabel = onlineRole
-        ? animationPlayer.name
-        : animation.playerKey === "player" ? "VOCÊ" : "IA";
-      const label = `${playerLabel} · ${animation.text}`;
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = animation.color;
-      ctx.lineWidth = mobile ? 3 : 2;
-      ctx.beginPath();
-      ctx.arc(position.x, position.y, badgeRadius + 5 + progress * 16, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.font = `bold ${mobile ? 15 : 12}px 'Segoe UI', sans-serif`;
-      const width = ctx.measureText(label).width + 22;
-      const x = mobile ? canvasWidth / 2 : 860;
-      const baseY = mobile
-        ? animation.playerKey === "player" ? 1050 : 440
-        : animation.playerKey === "player" ? 505 : 150;
-      const y = baseY - progress * 42 - index * (mobile ? 24 : 21);
-      ctx.fillStyle = "rgba(10, 23, 21, .94)";
-      roundRect(ctx, x - width / 2, y - (mobile ? 14 : 12), width, mobile ? 28 : 24, 8);
-      ctx.fill();
-      ctx.strokeStyle = animation.color;
-      ctx.lineWidth = 1;
-      roundRect(ctx, x - width / 2, y - (mobile ? 14 : 12), width, mobile ? 28 : 24, 8);
-      ctx.stroke();
-      ctx.fillStyle = animation.color;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(label, x, y);
-      ctx.restore();
-    });
   }
 
   function drawVisualEffect(ctx) {
@@ -2856,8 +2729,8 @@
 
   function drawGuessMarker(ctx, playerKey, type) {
     const mobile = isMobileCanvas();
-    const x = mobile ? 670 : 900;
-    const y = mobile ? playerKey === "ai" ? 410 : 760 : playerKey === "ai" ? 205 : 407;
+    const x = mobile ? playerKey === "ai" ? 555 : 225 : playerKey === "ai" ? 640 : 400;
+    const y = mobile ? 650 : 330;
     const width = mobile ? 82 : 58;
     const height = mobile ? 118 : 84;
     ctx.save();
@@ -2998,7 +2871,7 @@
     ctx.fillStyle = sheen;
     ctx.fill();
     ctx.lineWidth = highlighted ? 3 : 2;
-    ctx.strokeStyle = type ? "rgba(28, 44, 38, .2)" : "rgba(208, 235, 190, .65)";
+    ctx.strokeStyle = type ? highlighted ? CARDS[type].color : "rgba(28, 44, 38, .2)" : "rgba(208, 235, 190, .65)";
     roundRect(ctx, -width / 2 + 4, -height / 2 + 4, width - 8, height - 8, 8);
     ctx.stroke();
 
@@ -3006,15 +2879,25 @@
       drawCardDetails(ctx, CARDS[type], width, height);
     } else if (type) {
       const mobile = isMobileCanvas();
+      const card = CARDS[type];
       ctx.textAlign = "center";
+      ctx.fillStyle = card.color;
+      ctx.save();
+      ctx.globalAlpha *= .18;
+      roundRect(ctx, -width * .38, -height * .38, width * .76, height * .58, 8);
+      ctx.fill();
+      ctx.restore();
+      ctx.font = `${Math.max(11, Math.round(width * .16))}px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif`;
+      ctx.fillText(card.emoji, -width * .31, -height * .31);
       ctx.fillStyle = "#24312b";
       ctx.font = `${Math.round(width * (mobile ? 0.52 : 0.43))}px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif`;
-      ctx.fillText(CARDS[type].emoji, 0, 8);
-      ctx.fillStyle = CARDS[type].color;
-      ctx.fillRect(-width * 0.34, height * 0.33, width * 0.68, 5);
+      ctx.fillText(card.emoji, 0, height * .07);
+      ctx.fillStyle = card.color;
+      roundRect(ctx, -width * .39, height * .22, width * .78, height * .17, 5);
+      ctx.fill();
       ctx.fillStyle = "#35443d";
       ctx.font = `bold ${Math.max(mobile ? 12 : 8, Math.round(width * (mobile ? 0.135 : 0.105)))}px 'Segoe UI', sans-serif`;
-      ctx.fillText(CARDS[type].name.toUpperCase(), 0, height * (mobile ? 0.31 : 0.28));
+      ctx.fillText(card.name.toUpperCase(), 0, height * .335, width * .72);
     } else {
       ctx.textAlign = "center";
       ctx.strokeStyle = "rgba(201, 239, 116, .47)";

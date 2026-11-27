@@ -67,8 +67,11 @@ test("eventos offline aparecem em cards com resultado e efeitos", async () => {
   window.BlefeOnline.logGameEvent("Partida iniciada");
   window.BlefeOnline.logGameEvent({
     kind: "round-result", round: 1, cardType: "leao", playedBy: "Você", guesser: "IA",
-    guess: "vaca", correct: false, attributes: [{ playerName: "IA", attribute: "hp", value: -2 }],
-    effectSummary: "−2 vidas"
+    guess: "vaca", correct: false, attributes: [
+      { playerName: "IA", attribute: "hp", value: -2 },
+      { playerName: "IA", attribute: "cards", value: 1 }
+    ],
+    effectSummary: "−2 vidas; compra +1 carta; 1 dano bloqueado por escudo"
   });
   const messages = elements.get("#chat-messages").children;
   assert.equal(messages.length, 2);
@@ -77,6 +80,33 @@ test("eventos offline aparecem em cards com resultado e efeitos", async () => {
   for (const text of ["Leão", "IA palpitou Vaca", "ERRO", "−2", "Vidas"]) {
     assert.ok(messages[1].innerText.includes(text), text);
   }
+  assert.equal(messages[1].innerText.split("−2").length - 1, 1);
+  assert.equal(messages[1].innerText.split("+1").length - 1, 1);
+  assert.match(messages[1].innerText, /dano bloqueado por escudo/);
+  const attributes = messages[1].children[1].children[1];
+  assert.equal(attributes.children.filter((child) => child.className === "chat-result-change-group").length, 1);
+});
+
+test("card preserva ação especial sem repetir alterações", async () => {
+  const { elements, window } = await setup();
+  window.BlefeOnline.showOfflineLog();
+  window.BlefeOnline.logGameEvent({
+    kind: "round-result", round: 2, cardType: "troca", playedBy: "Você", guesser: "IA",
+    guess: "vaca", correct: false, attributes: [],
+    effectSummary: "Você pode trocar as mãos durante as 2 próximas rodadas"
+  });
+  const card = elements.get("#chat-messages").children[0];
+  assert.match(card.innerText, /pode trocar as mãos durante as 2 próximas rodadas/);
+  assert.doesNotMatch(card.innerText, /Sem alterações de atributos/);
+
+  window.BlefeOnline.logGameEvent({
+    kind: "round-result", round: 3, cardType: "coringa", playedBy: "Você", guesser: "IA",
+    guess: "vaca", correct: false, attributes: [{ playerName: "Você", attribute: "shields", value: 1 }],
+    effectSummary: "Você +1 escudo; revela até 2 cartas e troca 1 por uma carta própria"
+  });
+  const jokerCard = elements.get("#chat-messages").children[1];
+  assert.match(jokerCard.innerText, /revela até 2 cartas e troca 1 por uma carta própria/);
+  assert.equal(jokerCard.innerText.split("+1").length - 1, 1);
 });
 
 test("resultado online final e atualizações permanecem em um único card", async () => {
