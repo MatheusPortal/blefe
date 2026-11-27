@@ -15,6 +15,7 @@
     tartaruga: 5
   };
   const COMMON_DECK_SIZE = Object.values(COMMON_CARD_COUNTS).reduce((sum, count) => sum + count, 0);
+  const AI = window.BlefeAI;
   const DECK_SIZE = COMMON_DECK_SIZE + SPECIAL_CARDS.length;
   const INITIAL_HAND_SIZE = 7;
   const MAX_INITIAL_CARDS_PER_SPECIES = 3;
@@ -59,6 +60,11 @@
   const restartButton = document.querySelector("#restart-button");
   const MOBILE_CANVAS_WIDTH = 780;
   const MOBILE_CANVAS_HEIGHT = 1520;
+  const TABLE_THEMES = [
+    { top: "#245c4d", bottom: "#12362f", pattern: "rgba(213, 235, 190, .05)", style: "lines" },
+    { top: "#25475f", bottom: "#101f37", pattern: "rgba(204, 225, 248, .07)", style: "diamonds" },
+    { top: "#65423b", bottom: "#301c24", pattern: "rgba(245, 215, 173, .07)", style: "dots" }
+  ];
   let canvasWidth = 1100;
   let canvasHeight = 660;
   let canvasPixelRatio = 1;
@@ -91,20 +97,20 @@
   let swapRequestPending = false;
   let globalLearning = createLocalLearningModel();
   let learningAvailable = false;
+  let learningLoadPromise = null;
   let actionRenderKey = "";
 
   const isOnlineHost = () => onlineRole === "host";
   const isOnlineGuest = () => onlineRole === "guest";
 
   function createLocalLearningModel() {
-    const counts = Object.fromEntries(CARD_TYPES.map((type) => [type, 0]));
-    return { version: 1, observations: 0, humanPlays: { ...counts }, humanGuesses: { ...counts } };
+    return AI.createModel();
   }
 
   function applyLearningModel(model) {
     if (
       !model
-      || model.version !== 1
+      || ![1, 2].includes(model.version)
       || !Number.isSafeInteger(model.observations)
       || !model.humanPlays
       || !model.humanGuesses
@@ -113,7 +119,7 @@
     if (!groups.every((group) => CARD_TYPES.every((type) => (
       Number.isSafeInteger(model[group][type]) && model[group][type] >= 0
     )))) return false;
-    globalLearning = model;
+    globalLearning = AI.sanitizeModel(model);
     return true;
   }
 
@@ -137,12 +143,11 @@
     }
   }
 
-  async function recordLearningObservation(played, guessed) {
+  async function recordLearningObservation(played, guessed, reward) {
     if (onlineRole) return;
-    const payload = { played, guessed };
-    if (payload.played) globalLearning.humanPlays[payload.played] += 1;
-    if (payload.guessed) globalLearning.humanGuesses[payload.guessed] += 1;
-    globalLearning.observations += 1;
+    const payload = { played, guessed, reward };
+    if (learningLoadPromise) await learningLoadPromise;
+    AI.addObservation(globalLearning, payload);
     if (learningAvailable) {
       try {
         const response = await fetch("/api/ai-learning", {
@@ -151,7 +156,10 @@
           body: JSON.stringify(payload)
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        applyLearningModel(await response.json());
+        const model = await response.json();
+        if (model.observations >= globalLearning.observations && !applyLearningModel(model)) {
+          throw new Error("Modelo global inválido");
+        }
         return;
       } catch (error) {
         learningAvailable = false;
@@ -200,7 +208,7 @@
     onlineNames = null;
     connectionLogButton.hidden = true;
     window.BlefeOnline?.showOfflineLog();
-    loadGlobalLearning();
+    learningLoadPromise = loadGlobalLearning();
     showGameView();
     startGame();
   }
@@ -517,6 +525,9 @@
       },
       extraDeck,
       extraDiscard,
+      tableTheme: Math.floor(Math.random() * TABLE_THEMES.length),
+      publicDiscards: [],
+      learningBefore: null,
       phase: "dealing",
       round: 1,
       seconds: TURN_SECONDS,
@@ -595,14 +606,15 @@
   }
 
   function beginSetupChallenge() {
-    const deckCounts = Object.fromEntries(COMMON_CARDS.map((type) => [type, 0]));
-    for (const type of state.extraDeck) deckCounts[type] += 1;
-    const totalCards = state.extraDeck.length;
+    const deckCounts = Object.fromEntries(COMMON_CARDS.map((type) => [
+      type, COMMON_CARD_COUNTS[type] - state.players.ai.hand.filter((card) => card === type).length
+    ]));
+    const totalCards = Object.values(deckCounts).reduce((sum, count) => sum + count, 0);
     const probabilities = Object.fromEntries(COMMON_CARDS.map((type) => [
       type,
       totalCards ? deckCounts[type] / totalCards : 1 / COMMON_CARDS.length
     ]));
-    state.setupGuesses.ai = isOnlineHost() ? null : chooseGuess(probabilities, false, COMMON_CARDS);
+    state.setupGuesses.ai = isOnlineHost() ? null : sampleByScore(COMMON_CARDS, (type) => probabilities[type], 0.025);
     state.setupCard = drawSetupCard();
     state.phase = "setup-guess";
     state.message = "Adivinhe a carta para disputar a iniciativa.";
@@ -721,6 +733,7 @@
     const aiCorrect = state.setupGuesses.ai === state.setupCard;
     state.lastReveal = { actualType: state.setupCard };
     state.extraDiscard.push(state.setupCard);
+    state.publicDiscards.push(state.setupCard);
 
     if (playerCorrect !== aiCorrect) {
       const starter = playerCorrect ? "player" : "ai";
@@ -1078,6 +1091,10 @@
     }
 
     window.clearInterval(clockInterval);
+    state.learningBefore = {
+      player: getPlayerAttributes(state.players.player),
+      ai: getPlayerAttributes(state.players.ai)
+    };
     player.hand.splice(cardIndex, 1);
     state.extraDiscard.push(type);
     if (playerKey === "ai" && type === "coringa") state.aiHasJoker = false;
@@ -1115,12 +1132,12 @@
     const weights = {};
     const totalGlobalPlays = Object.values(globalLearning.humanPlays).reduce((sum, value) => sum + value, 0);
     for (const type of CARD_TYPES) {
-      if (type === "coringa") {
-        weights[type] = state.aiHasJoker ? 0 : (globalLearning.humanPlays.coringa + 1) / (totalGlobalPlays + CARD_TYPES.length);
-      } else {
-        const globalProbability = (globalLearning.humanPlays[type] + 1) / (totalGlobalPlays + CARD_TYPES.length);
-        weights[type] = (1 + state.playerPlayHistory[type] * 1.3) * (0.35 + globalProbability);
-      }
+      const copies = COMMON_CARD_COUNTS[type] || 1;
+      const known = state.players.ai.hand.filter((card) => card === type).length
+        + state.publicDiscards.filter((card) => card === type).length;
+      const remaining = Math.max(0, copies - known);
+      const globalProbability = (globalLearning.humanPlays[type] + 1) / (totalGlobalPlays + CARD_TYPES.length);
+      weights[type] = remaining * (0.5 + globalProbability * CARD_TYPES.length) * (1 + state.playerPlayHistory[type] * 0.12);
     }
     const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
     return Object.fromEntries(Object.entries(weights).map(([type, value]) => [type, value / total]));
@@ -1139,43 +1156,28 @@
     return options[options.length - 1];
   }
 
-  function chooseGuess(probabilities, useLuck, options = CARD_TYPES) {
-    const available = [...options];
-    if (useLuck) {
-      const leastLikely = available
-        .filter((type) => probabilities[type] > 0)
-        .sort((a, b) => probabilities[a] - probabilities[b])
-        .slice(0, Math.min(2, available.length - 1));
-      for (const type of leastLikely) available.splice(available.indexOf(type), 1);
-    }
-
+  function chooseGuess(probabilities, options = CARD_TYPES) {
+    const notEliminated = options.filter((type) => !state.eliminated.includes(type));
+    const possible = notEliminated.filter((type) => probabilities[type] > 0);
+    const available = possible.length ? possible : notEliminated;
+    const total = available.reduce((sum, type) => sum + probabilities[type], 0);
+    const owner = getPlayerAttributes(state.players.player);
+    const guesser = getPlayerAttributes(state.players.ai);
     return sampleByScore(available, (guess) => {
       let value = 0;
-      const penalties = {
-        leao: 2.2,
-        coelho: state.players.ai.luck > 0 ? 0.7 : 1,
-        vaca: 0.3,
-        peixe: state.players.ai.luck >= 2 ? 1.2 : 1,
-        tigre: 1,
-        macaco: 0.8,
-        elefante: 1,
-        tartaruga: 0.4,
-        coringa: 1.5
-      };
-      for (const actual of CARD_TYPES) {
-        const chance = probabilities[actual] || 0;
-        if (guess !== actual) value -= chance * penalties[actual];
+      for (const actual of available) {
+        const chance = total ? probabilities[actual] / total : 1 / available.length;
+        value -= chance * AI.effectValue(actual, owner, guesser, guess === actual, state.extraDeck.length);
       }
-      return value;
-    }, 0.9);
+      return value + AI.learnedValue(globalLearning, "guess", guess) * 0.35;
+    }, 0.35);
   }
 
   function aiMakeGuess() {
     if (state.gameOver || state.phase !== "ai-guess") return;
     const ai = state.players.ai;
-    const useLuck = ai.luck > 0 && Math.random() < 0.65;
-    if (useLuck) ai.luck -= 1;
-    const guess = chooseGuess(probabilityOfPlayerCard(), useLuck);
+    if (ai.luck > 0 && !state.hintUsed) applyLuck("ai");
+    const guess = chooseGuess(probabilityOfPlayerCard());
     submitGuess("ai", guess);
   }
 
@@ -1200,6 +1202,22 @@
   }
 
   function recordResolvedGuess(reveal) {
+    state.publicDiscards.push(reveal.actualType);
+    if (!onlineRole && state.learningBefore) {
+      const owner = state.players[reveal.owner];
+      const guesser = state.players[reveal.guesser];
+      const winner = guesser.hp <= 0 || owner.hand.length === 0
+        || (reveal.actualType === "coringa" && !reveal.correct && guesser.hand.length === 0)
+        ? reveal.owner : null;
+      const after = { player: getPlayerAttributes(state.players.player), ai: getPlayerAttributes(state.players.ai) };
+      recordLearningObservation(
+        reveal.owner === "player" ? reveal.actualType : null,
+        reveal.guesser === "player" ? reveal.guess : null,
+        { action: reveal.owner === "ai" ? "play" : "guess", card: reveal.owner === "ai" ? reveal.actualType : reveal.guess,
+          value: AI.reward(state.learningBefore, after, winner) }
+      );
+      state.learningBefore = null;
+    }
     recordRoundResult(reveal);
   }
 
@@ -1285,7 +1303,6 @@
     const correct = guess === actualType;
     playResultSound(correct);
     if (guesserKey === "player") state.playerGuessHistory[guess] += 1;
-    recordLearningObservation(owner === "player" ? actualType : null, guesserKey === "player" ? guess : null);
     const effect = resolveCardEffect(actualType, owner, guesserKey, correct);
     const effectSummary = correct && effect === "sem efeito" ? "nada acontece" : effect;
     state.message = correct ? "Palpite certo!" : "Palpite errado!";
@@ -1351,7 +1368,11 @@
     state.lastReveal.revealedCards = [...state.pendingJokerReveal.revealedCards];
     if (ownerKey === "ai" && !isOnlineHost()) {
       state.phase = "ai-joker-select";
-      finishJokerReveal(selectedIndices[Math.floor(Math.random() * selectedIndices.length)]);
+      const best = selectedIndices.reduce((chosen, index) => (
+        scoreAiCard(target.hand[index], state.players.ai.hand.length + 1)
+          > scoreAiCard(target.hand[chosen], state.players.ai.hand.length + 1) ? index : chosen
+      ));
+      finishJokerReveal(best);
       return;
     }
     state.phase = ownerKey === "player" ? "player-joker-select" : "ai-joker-select";
@@ -1474,6 +1495,11 @@
 
   function advanceAfterResult() {
     if (state.phase !== "result") return;
+    if (!onlineRole && state.lastReveal.owner === "ai" && isSwapAvailable("ai")
+      && state.players.ai.hand.length > state.players.player.hand.length) {
+      completeHandSwap("ai");
+      return;
+    }
     if (state.lastReveal.owner === "player") {
       startAiTurn();
       return;
@@ -1519,35 +1545,24 @@
     }, 750);
   }
 
-  function chooseAiCard() {
-    const hand = state.players.ai.hand;
+  function scoreAiCard(type, handSize) {
     const guessCounts = state.playerGuessHistory;
     const totalGuesses = Object.values(guessCounts).reduce((sum, value) => sum + value, 0);
-    const guessProbability = Object.fromEntries(CARD_TYPES.map((type) => [
-      type,
-      ((guessCounts[type] + 1) / (totalGuesses + CARD_TYPES.length)) * 0.65
-        + ((globalLearning.humanGuesses[type] + 1)
-          / (Object.values(globalLearning.humanGuesses).reduce((sum, value) => sum + value, 0) + CARD_TYPES.length)) * 0.35
-    ]));
-    const playerIsWeak = state.players.player.hp <= 2;
-    const scores = {
-      leao: 2.2 * (1 - guessProbability.leao) + (playerIsWeak ? 0.7 : 0),
-      coelho: 1 * (1 - guessProbability.coelho),
-      vaca: 0.3 * (1 - guessProbability.vaca),
-      peixe: 1.2 * (1 - guessProbability.peixe),
-      tigre: 1 * (1 - guessProbability.tigre),
-      macaco: 0.8 * (1 - guessProbability.macaco),
-      elefante: 1 * (1 - guessProbability.elefante),
-      tartaruga: 0.4 * (1 - guessProbability.tartaruga),
-      troca: 0.6 * (1 - guessProbability.troca),
-      coringa: 1.5 * (1 - guessProbability.coringa)
-    };
-    const mixedScores = (type) => scores[type] - state.aiPlayHistory[type] * 0.4;
+    const totalGlobal = Object.values(globalLearning.humanGuesses).reduce((sum, value) => sum + value, 0);
+    const guessChance = ((guessCounts[type] + 1) / (totalGuesses + CARD_TYPES.length)) * 0.65
+      + ((globalLearning.humanGuesses[type] + 1) / (totalGlobal + CARD_TYPES.length)) * 0.35;
+    const owner = { ...getPlayerAttributes(state.players.ai), cards: handSize - 1 };
+    const guesser = getPlayerAttributes(state.players.player);
+    return guessChance * AI.effectValue(type, owner, guesser, true, state.extraDeck.length)
+      + (1 - guessChance) * AI.effectValue(type, owner, guesser, false, state.extraDeck.length)
+      + AI.learnedValue(globalLearning, "play", type) * 0.35
+      - state.aiPlayHistory[type] * 0.1;
+  }
 
-    if (Math.random() < Math.max(0.2, 0.65 - globalLearning.observations / 2500)) {
-      return hand[Math.floor(Math.random() * hand.length)];
-    }
-    return sampleByScore(hand, mixedScores, 1.6);
+  function chooseAiCard() {
+    const hand = [...new Set(state.players.ai.hand)];
+    if (Math.random() < 0.08) return hand[Math.floor(Math.random() * hand.length)];
+    return sampleByScore(hand, (type) => scoreAiCard(type, state.players.ai.hand.length), 0.55);
   }
 
   function render() {
@@ -2071,12 +2086,7 @@
       const mobile = isMobileCanvas();
       const width = canvasWidth;
       const height = canvasHeight;
-      ctx.clearRect(0, 0, width, height);
-      const felt = ctx.createLinearGradient(0, 0, width, height);
-      felt.addColorStop(0, "#245c4d");
-      felt.addColorStop(1, "#12362f");
-      ctx.fillStyle = felt;
-      ctx.fillRect(0, 0, width, height);
+      drawTableSurface(ctx);
       ctx.strokeStyle = "rgba(207, 231, 183, .24)";
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -2292,6 +2302,7 @@
         drawCard(ctx, layout.x - CARD_WIDTH / 2, layout.y - CARD_HEIGHT / 2 - (hovered ? 15 : 0),
           layout.type, CARD_WIDTH, CARD_HEIGHT, layout.angle, hovered);
       }
+      if (canPlay && hoverCard >= 0 && layouts[hoverCard]) drawCardTooltip(ctx, layouts[hoverCard]);
       if (hand.length > 0) {
         ctx.fillStyle = "rgba(226,238,221,.76)";
         ctx.font = `${isMobileCanvas() ? 14 : 9}px Consolas, monospace`;
@@ -2299,6 +2310,49 @@
         ctx.fillText(canPlay ? "SUA VEZ · CLIQUE PARA JOGAR" : "SUA MÃO", canvasWidth / 2, isMobileCanvas() ? canvasHeight - 18 : 644);
       }
     }
+
+  function drawTableSurface(ctx) {
+    const themeIndex = roomState && onlineRole === "room" ? roomState.tableTheme : state.tableTheme;
+    const theme = TABLE_THEMES[themeIndex] || TABLE_THEMES[0];
+    const width = canvasWidth;
+    const height = canvasHeight;
+    ctx.clearRect(0, 0, width, height);
+    const felt = ctx.createLinearGradient(0, 0, width, height);
+    felt.addColorStop(0, theme.top);
+    felt.addColorStop(1, theme.bottom);
+    ctx.fillStyle = felt;
+    ctx.fillRect(0, 0, width, height);
+    ctx.save();
+    ctx.strokeStyle = theme.pattern;
+    ctx.fillStyle = theme.pattern;
+    ctx.lineWidth = 1;
+    if (theme.style === "lines") {
+      for (let x = 20; x < width; x += 38) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+    } else if (theme.style === "diamonds") {
+      for (let x = -height; x < width + height; x += 90) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + height, height);
+        ctx.moveTo(x, height);
+        ctx.lineTo(x + height, 0);
+        ctx.stroke();
+      }
+    } else {
+      for (let y = 24; y < height; y += 38) {
+        for (let x = 24; x < width; x += 38) {
+          ctx.beginPath();
+          ctx.arc(x + (Math.floor(y / 38) % 2) * 19, y, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
 
   function drawTable() {
     if (roomState && onlineRole === "room") {
@@ -2312,25 +2366,7 @@
     }
     const width = canvasWidth;
     const height = canvasHeight;
-    ctx.clearRect(0, 0, width, height);
-
-    const felt = ctx.createLinearGradient(0, 0, 0, height);
-    felt.addColorStop(0, "#205347");
-    felt.addColorStop(1, "#173d35");
-    ctx.fillStyle = felt;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.save();
-    ctx.globalAlpha = 0.07;
-    ctx.strokeStyle = "#d4e4b7";
-    ctx.lineWidth = 1;
-    for (let x = 20; x < width; x += 38) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-    ctx.restore();
+    drawTableSurface(ctx);
 
     const glow = ctx.createRadialGradient(width / 2, height / 2, 25, width / 2, height / 2, 430);
     glow.addColorStop(0, "rgba(181, 222, 155, .08)");
@@ -2376,25 +2412,7 @@
   function drawMobileTable(ctx) {
     const width = canvasWidth;
     const height = canvasHeight;
-    ctx.clearRect(0, 0, width, height);
-
-    const felt = ctx.createLinearGradient(0, 0, width, height);
-    felt.addColorStop(0, "#205347");
-    felt.addColorStop(1, "#173d35");
-    ctx.fillStyle = felt;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.save();
-    ctx.globalAlpha = 0.045;
-    ctx.strokeStyle = "#d4e4b7";
-    ctx.lineWidth = 1;
-    for (let x = 18; x < width; x += 38) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-    ctx.restore();
+    drawTableSurface(ctx);
 
     const glow = ctx.createRadialGradient(width / 2, height / 2, 45, width / 2, height / 2, height * .62);
     glow.addColorStop(0, "rgba(181, 222, 155, .07)");
@@ -2790,25 +2808,44 @@
 
   function drawCardTooltip(ctx, layout) {
     const mobile = isMobileCanvas();
-    const width = mobile ? 330 : 224;
-    const height = mobile ? 64 : 43;
-    const x = Math.max(width / 2 + 8, Math.min(canvasWidth - width / 2 - 8, layout.x));
-    const y = mobile ? 645 : 425;
+    const width = mobile ? 500 : 330;
+    const padding = mobile ? 18 : 14;
+    const fontSize = mobile ? 25 : 14;
+    const lineHeight = mobile ? 32 : 19;
+    const card = CARDS[layout.type];
     ctx.save();
-    ctx.fillStyle = "rgba(10, 23, 21, .94)";
+    ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
+    const lines = [];
+    for (const paragraph of card.effect.split(/(?=Acerto —)/)) {
+      let line = "";
+      for (const word of paragraph.trim().split(/\s+/)) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(next).width > width - padding * 2) {
+          lines.push(line);
+          line = word;
+        } else line = next;
+      }
+      if (line) lines.push(line);
+    }
+    const height = padding * 2 + (mobile ? 30 : 23) + lines.length * lineHeight;
+    const x = Math.max(width / 2 + 8, Math.min(canvasWidth - width / 2 - 8, layout.x));
+    const y = Math.max(12, layout.y - CARD_HEIGHT / 2 - 24 - height);
+    ctx.fillStyle = "rgba(10, 23, 21, .98)";
     roundRect(ctx, x - width / 2, y, width, height, 7);
     ctx.fill();
-    ctx.strokeStyle = `${CARDS[layout.type].color}99`;
+    ctx.strokeStyle = card.color;
     ctx.lineWidth = 1;
     roundRect(ctx, x - width / 2, y, width, height, 7);
     ctx.stroke();
-    ctx.fillStyle = CARDS[layout.type].color;
-    ctx.textAlign = "center";
-    ctx.font = `bold ${mobile ? 17 : 11}px 'Segoe UI', sans-serif`;
-    ctx.fillText(`${CARDS[layout.type].emoji} ${CARDS[layout.type].name}`, x, y + (mobile ? 24 : 16));
+    ctx.fillStyle = card.color;
+    ctx.textAlign = "left";
+    ctx.font = `bold ${mobile ? 27 : 16}px 'Segoe UI', sans-serif`;
+    ctx.fillText(`${card.emoji} ${card.name}`, x - width / 2 + padding, y + padding + fontSize);
     ctx.fillStyle = "#e6ede1";
-    ctx.font = `${mobile ? 15 : 10}px 'Segoe UI', sans-serif`;
-    ctx.fillText(CARDS[layout.type].effect, x, y + (mobile ? 48 : 33), width - 18);
+    ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
+    lines.forEach((line, index) => {
+      ctx.fillText(line, x - width / 2 + padding, y + padding + (mobile ? 30 : 23) + fontSize + index * lineHeight);
+    });
     ctx.restore();
   }
 

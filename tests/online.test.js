@@ -57,6 +57,8 @@ test("sala mantém cartas ocultas, cronômetros e vitória ao esvaziar a mão", 
   const guestOpening = await guest.next((message) => message.type === "game-state" && message.state.phase === "setup-guess");
   assert.ok(opening.state.deadlineAt > Date.now());
   assert.equal(opening.state.activeCard, null);
+  assert.ok([0, 1, 2].includes(opening.state.tableTheme));
+  assert.equal(guestOpening.state.tableTheme, opening.state.tableTheme);
   assert.equal(opening.state.players.find((player) => player.id !== opening.state.you).hand, undefined);
   for (const client of [host, guest]) client.send("room-action", { payload: { action: "setup-guess", guess: "leao" } });
 
@@ -64,6 +66,7 @@ test("sala mantém cartas ocultas, cronômetros e vitória ao esvaziar a mão", 
   for (let round = 1; round <= 13; round += 1) {
     const snapshot = (await host.next((message) => message.type === "game-state" && message.state.phase === "play" && message.state.round === round)).state;
     assert.ok(snapshot.deadlineAt > Date.now());
+    assert.equal(snapshot.tableTheme, opening.state.tableTheme);
     const owner = clients.get(snapshot.turnPlayerId);
     const guesser = owner === host ? guest : host;
     const ownerState = owner === host ? snapshot : (await guest.next((message) => message.type === "game-state" && message.state.phase === "play" && message.state.round === round)).state;

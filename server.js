@@ -5,13 +5,14 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
+import "./ai-policy.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 10000);
 const rooms = new Map();
 const peers = new Map();
 const socketPeers = new WeakMap();
-const cardTypes = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga", "troca", "coringa"];
+const cardTypes = globalThis.BlefeAI.types;
 const aiLearningFile = process.env.AI_LEARNING_FILE || path.join(root, ".data", "ai-learning.json");
 const learningWriteOrigin = new Map();
 let saveLearningPromise = Promise.resolve();
@@ -21,6 +22,7 @@ const staticFiles = new Map([
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
   ["/game.js", ["game.js", "text/javascript; charset=utf-8"]],
+  ["/ai-policy.js", ["ai-policy.js", "text/javascript; charset=utf-8"]],
   ["/online.js", ["online.js", "text/javascript; charset=utf-8"]]
 ]);
 
@@ -29,26 +31,11 @@ function logEvent(event, details = {}) {
 }
 
 function newLearningModel() {
-  const counts = () => Object.fromEntries(cardTypes.map((type) => [type, 0]));
-  return {
-    version: 1,
-    observations: 0,
-    humanPlays: counts(),
-    humanGuesses: counts()
-  };
+  return globalThis.BlefeAI.createModel();
 }
 
 function sanitizeLearningModel(candidate) {
-  const model = newLearningModel();
-  if (!candidate || candidate.version !== 1 || !Number.isSafeInteger(candidate.observations)) return model;
-  for (const group of ["humanPlays", "humanGuesses"]) {
-    for (const type of cardTypes) {
-      const value = candidate[group] && candidate[group][type];
-      if (Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000) model[group][type] = value;
-    }
-  }
-  model.observations = Math.min(candidate.observations, 1_000_000_000);
-  return model;
+  return globalThis.BlefeAI.sanitizeModel(candidate);
 }
 
 async function loadLearningModel() {
@@ -260,6 +247,7 @@ function startRoomGame(room) {
     turnIndex: 0,
     turnPlayerId: null,
     round: 1,
+    tableTheme: Math.floor(Math.random() * 3),
     phase: "setup-guess",
     activeCard: deck.splice(deck.findIndex((card) => !["troca", "coringa"].includes(card)), 1)[0],
     guesses: new Map(),
@@ -305,6 +293,7 @@ function broadcastGame(room, phase = room.game?.phase) {
       roomId: room.id,
       phase,
       round: game.round,
+      tableTheme: game.tableTheme,
       turnPlayerId: game.turnPlayerId,
       activeCard: ["setup-result", "dice-roll", "result", "finished", "joker-select"].includes(phase) ? game.activeCard : null,
       tableCard: game.tableCard,
@@ -971,19 +960,11 @@ const server = createServer(async (request, response) => {
     }
     try {
       const observation = await readJsonBody(request);
-      if (
-        !observation
-        || typeof observation !== "object"
-        || (observation.played !== null && !cardTypes.includes(observation.played))
-        || (observation.guessed !== null && !cardTypes.includes(observation.guessed))
-        || (observation.played === null && observation.guessed === null)
-      ) {
+      if (!globalThis.BlefeAI.validObservation(observation)) {
         learningResponse(response, { error: "Observação inválida." }, 400);
         return;
       }
-      if (observation.played) aiLearning.humanPlays[observation.played] += 1;
-      if (observation.guessed) aiLearning.humanGuesses[observation.guessed] += 1;
-      aiLearning.observations += 1;
+      globalThis.BlefeAI.addObservation(aiLearning, observation);
       await saveLearningModel();
       learningResponse(response, aiLearning);
     } catch (error) {

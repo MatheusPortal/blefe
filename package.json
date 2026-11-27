@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check game.js && node --check online.js"
+    "check": "node --check server.js && node --check ai-policy.js && node --check game.js && node --check online.js"
   },
   "engines": {
     "node": ">=20"

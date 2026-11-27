@@ -31,6 +31,7 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 - O cronômetro e as opções de palpite aparecem dentro da mesa; vida e cartas são mostradas em indicadores circulares compactos.
 - As opções de palpite formam um leque de cartas. O chat exibe eventos do sistema e resultados das cartas em cards; no modo offline, funciona como log sem envio de mensagens.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
+- Cada partida sorteia uma das três mesas: verde, azul ou vinho. No online, os dois jogadores veem a mesma mesa.
 - As jogadas emitem o mesmo som, sem revelar a identidade da carta antes do palpite; o áudio pode ser desligado. Ganhos e perdas de vida, sorte, escudos e cartas são destacados com animações junto aos indicadores dos jogadores.
 - No online, a mão adversária permanece no topo, inclusive durante a seleção de cartas do Coringa. Em telas pequenas, a mesa ocupa a largura disponível e a página pode ser rolada.
 - Na distribuição inicial, cada jogador pode receber no máximo 3 cartas do mesmo animal. Troca e Coringa são únicas no baralho.
@@ -51,7 +52,9 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 
 ## Sobre a IA
 
-A IA do modo offline combina os padrões da partida atual com estatísticas agregadas das jogadas e palpites recebidos pelo servidor. Conforme essas observações aumentam, ela reduz a escolha aleatória e passa a priorizar combinações mais informadas. O modelo fica em `.data/ai-learning.json` e também pode usar o arquivo definido por `AI_LEARNING_FILE`; em hospedagens efêmeras, configure armazenamento persistente para manter o aprendizado após reinícios ou implantações.
+A IA do modo offline avalia os efeitos previstos das cartas, considerando vidas, escudos, sorte, tamanho das mãos, cartas restantes e condições de vitória. Ao adivinhar, considera as cartas conhecidas e usa as opções realmente eliminadas pela sorte. Ela também combina padrões da partida atual com estatísticas agregadas das partidas contra jogadores e uma recompensa calculada pelas mudanças de recursos e pela vitória ou derrota. A exploração continua para que a IA possa descobrir estratégias melhores; o aprendizado não garante uma vitória nem melhora em todas as partidas.
+
+Quando o servidor está disponível, essas observações são compartilhadas entre os jogadores que usam esse servidor. O modelo anterior é preservado e atualizado para o novo formato. Ele fica em `.data/ai-learning.json` ou no arquivo definido por `AI_LEARNING_FILE`; em hospedagens efêmeras, configure armazenamento persistente para manter o aprendizado após reinícios ou implantações. Ao jogar sem servidor ou se a comunicação falhar, o aprendizado fica apenas no armazenamento local do navegador e não é sincronizado posteriormente.
 
 ## Modo online e implantação
 
