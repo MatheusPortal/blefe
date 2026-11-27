@@ -72,6 +72,7 @@
   let roundPauseInterval;
   let attributeAnimationFrame;
   let resultAnimationFrame;
+  let musicInterval;
   let audioContext;
   let soundEnabled = true;
   let hoverCard = -1;
@@ -288,6 +289,7 @@
     window.clearInterval(diceInterval);
     window.clearInterval(roundPauseInterval);
     window.clearTimeout(aiTimeout);
+    stopBackgroundMusic();
   }
 
   function appendSystemEvent(event) {
@@ -340,34 +342,75 @@
     if (audioContext.state === "suspended") audioContext.resume();
   }
 
-  function playCardSound(type) {
+  function playTone(frequency, delay = 0, duration = 0.16, volume = 0.045, waveform = "triangle", endFrequency = frequency) {
     if (!soundEnabled || !audioContext || audioContext.state !== "running") return;
-    const frequencies = {
-      leao: 392,
-      coelho: 587,
-      vaca: 330,
-      peixe: 523,
-      tigre: 440,
-      macaco: 659,
-      elefante: 349,
-      tartaruga: 494,
-      troca: 466,
-      coringa: 784
-    };
-    const now = audioContext.currentTime;
+    const now = audioContext.currentTime + delay;
     const oscillator = audioContext.createOscillator();
-    const volume = audioContext.createGain();
-    const frequency = frequencies[type];
-    oscillator.type = type === "coringa" ? "sawtooth" : "triangle";
+    const gain = audioContext.createGain();
+    oscillator.type = waveform;
     oscillator.frequency.setValueAtTime(frequency, now);
-    oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.25, now + 0.1);
-    volume.gain.setValueAtTime(0.001, now);
-    volume.gain.exponentialRampToValueAtTime(0.07, now + 0.015);
-    volume.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
-    oscillator.connect(volume);
-    volume.connect(audioContext.destination);
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(30, endFrequency), now + duration);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(volume, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
     oscillator.start(now);
-    oscillator.stop(now + 0.2);
+    oscillator.stop(now + duration + 0.02);
+  }
+
+  function playCardSound(type) {
+    const frequencies = {
+      leao: 392, coelho: 587, vaca: 330, peixe: 523, tigre: 440,
+      macaco: 659, elefante: 349, tartaruga: 494, troca: 466, coringa: 784
+    };
+    playTone(frequencies[type], 0, 0.16, 0.055, type === "coringa" ? "sawtooth" : "triangle", frequencies[type] * 1.22);
+    playTone(frequencies[type] * 0.5, 0.025, 0.12, 0.018, "sine", frequencies[type] * 0.72);
+  }
+
+  function playResultSound(correct) {
+    const notes = correct ? [523, 659, 784] : [330, 277, 220];
+    notes.forEach((frequency, index) => playTone(frequency, index * 0.095, 0.2, correct ? 0.042 : 0.032, "sine"));
+  }
+
+  function playSwapSound() {
+    [392, 523, 392, 659].forEach((frequency, index) => playTone(frequency, index * 0.08, 0.15, 0.035, "triangle"));
+  }
+
+  function playLuckSound() {
+    [880, 1174, 988].forEach((frequency, index) => playTone(frequency, index * 0.07, 0.19, 0.028, "sine"));
+  }
+
+  function playDiceSound() {
+    for (let index = 0; index < 4; index += 1) {
+      playTone(150 + Math.random() * 70, index * 0.055, 0.055, 0.018, "square");
+    }
+  }
+
+  function startBackgroundMusic() {
+    stopBackgroundMusic();
+    if (!soundEnabled || !audioContext || audioContext.state !== "running") return;
+    let phrase = 0;
+    const phrases = [
+      [196, 247, 294, 247],
+      [220, 262, 330, 262],
+      [196, 262, 330, 294],
+      [175, 220, 262, 247]
+    ];
+    const playPhrase = () => {
+      if (!soundEnabled || !audioContext || audioContext.state !== "running") return;
+      phrases[phrase % phrases.length].forEach((frequency, index) => {
+        playTone(frequency, index * 0.38, 0.34, 0.007, "sine");
+      });
+      phrase += 1;
+    };
+    playPhrase();
+    musicInterval = window.setInterval(playPhrase, 1700);
+  }
+
+  function stopBackgroundMusic() {
+    if (musicInterval) window.clearInterval(musicInterval);
+    musicInterval = null;
   }
 
   function startGame() {
@@ -435,6 +478,8 @@
     state.jokerDistributed = state.players.player.hand.includes("coringa") || state.players.ai.hand.includes("coringa");
     state.aiHasJoker = state.players.ai.hand.includes("coringa");
 
+    startBackgroundMusic();
+    playTone(392, 0.05, 0.28, 0.025, "triangle");
     recordSystemEvent("Partida iniciada. Boa sorte!");
     render();
     animateDeal();
@@ -631,6 +676,7 @@
       state.diceFrame += 1;
       state.dice.player = 1 + Math.floor(Math.random() * 6);
       state.dice.ai = 1 + Math.floor(Math.random() * 6);
+      playDiceSound();
       render();
       if (state.diceFrame < 8) return;
 
@@ -848,6 +894,7 @@
       { playerKey: "ai", text: "mão trocada", color: "#d9c477", startedAt: performance.now() }
     ];
     triggerVisualEffect("swap");
+    playSwapSound();
     animateAttributeChanges();
     render();
     return true;
@@ -1153,6 +1200,7 @@
       ai: getPlayerAttributes(state.players.ai)
     };
     const correct = guess === actualType;
+    playResultSound(correct);
     if (guesserKey === "player") state.playerGuessHistory[guess] += 1;
     recordLearningObservation(owner === "player" ? actualType : null, guesserKey === "player" ? guess : null);
     const effect = resolveCardEffect(actualType, owner, guesserKey, correct);
@@ -1321,6 +1369,7 @@
     if (state.eliminated.length === 0) return;
     state.hintUsed = true;
     guesser.luck -= 1;
+    playLuckSound();
     const eliminatedNames = state.eliminated.map((type) => CARDS[type].name).join(" nem ");
     state.log = `Sorte: não é ${eliminatedNames}.`;
     state.message = state.log;
@@ -1432,6 +1481,7 @@
     restartButton.hidden = Boolean(onlineRole);
     actionArea.hidden = !(state.phase === "player-guess"
       || (state.phase === "setup-guess" && (!isOnlineHost() || !state.setupGuesses.player)));
+    gameShell.classList.toggle("is-choosing", !actionArea.hidden);
     renderActions();
     canvas.setAttribute("aria-label", getCanvasDescription());
     if (isOnlineHost() && onlineSession && state.phase !== "dealing") {
@@ -1965,9 +2015,12 @@
     const ringRadius = radius - (mobile ? 6 : 5);
     ctx.save();
     ctx.fillStyle = "rgba(15, 33, 29, .78)";
+    ctx.shadowColor = "rgba(0, 0, 0, .26)";
+    ctx.shadowBlur = mobile ? 18 : 12;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.shadowColor = "transparent";
     ctx.strokeStyle = isPlayer ? "rgba(201, 239, 116, .55)" : "rgba(231, 243, 229, .2)";
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -2012,8 +2065,8 @@
     const now = performance.now();
     const badgeRadius = mobile ? 43 : 35;
     const positions = mobile
-      ? { ai: { x: 690, y: 76 }, player: { x: 690, y: 1410 } }
-      : { ai: { x: 1012, y: 78 }, player: { x: 1012, y: 568 } };
+      ? { ai: { x: 690, y: 76 }, player: { x: 90, y: 1410 } }
+      : { ai: { x: 1012, y: 78 }, player: { x: 88, y: 568 } };
 
     state.attributeAnimations.forEach((animation, index) => {
       const progress = (now - animation.startedAt) / 1100;
@@ -2391,11 +2444,18 @@
     ctx.shadowOffsetY = highlighted ? 10 : 6;
     const face = ctx.createLinearGradient(-width / 2, -height / 2, width / 2, height / 2);
     face.addColorStop(0, type ? "#fffdf4" : "#294a42");
-    face.addColorStop(1, type ? "#e5ddcb" : "#17352f");
+    face.addColorStop(type ? 0.62 : 0.55, type ? "#f0e9da" : "#22463d");
+    face.addColorStop(1, type ? "#d8cebb" : "#112c27");
     ctx.fillStyle = face;
     roundRect(ctx, -width / 2, -height / 2, width, height, 10);
     ctx.fill();
     ctx.shadowColor = "transparent";
+    const sheen = ctx.createLinearGradient(-width / 2, -height / 2, width / 2, height / 2);
+    sheen.addColorStop(0, "rgba(255, 255, 255, .18)");
+    sheen.addColorStop(.48, "rgba(255, 255, 255, 0)");
+    roundRect(ctx, -width / 2 + 4, -height / 2 + 4, width - 8, height - 8, 8);
+    ctx.fillStyle = sheen;
+    ctx.fill();
     ctx.lineWidth = highlighted ? 3 : 2;
     ctx.strokeStyle = type ? "rgba(28, 44, 38, .2)" : "rgba(208, 235, 190, .65)";
     roundRect(ctx, -width / 2 + 4, -height / 2 + 4, width - 8, height - 8, 8);
@@ -2589,7 +2649,12 @@
     soundEnabled = !soundEnabled;
     soundToggle.setAttribute("aria-pressed", String(soundEnabled));
     soundToggle.textContent = soundEnabled ? "♫ Som ligado" : "♫ Som desligado";
-    if (soundEnabled) prepareAudio();
+    if (soundEnabled) {
+      prepareAudio();
+      startBackgroundMusic();
+    } else {
+      stopBackgroundMusic();
+    }
   });
   window.addEventListener("pointerdown", prepareAudio, { once: true, passive: true });
   window.addEventListener("keydown", prepareAudio, { once: true, capture: true });

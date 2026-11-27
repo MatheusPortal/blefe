@@ -49,6 +49,7 @@
   let intentionallyLeaving = false;
   let roomId = "";
   let lastRemotePhase = "";
+  const mobileChatQuery = window.matchMedia("(max-width: 650px)");
 
   async function updateOnlinePlayerCount() {
     try {
@@ -76,7 +77,7 @@
     chatSendButton.disabled = !available || !allowMessages;
     chatPanel.querySelector("h2").textContent = title;
     chatPanel.setAttribute("aria-label", title);
-    setChatMinimized(available && window.matchMedia("(max-width: 650px)").matches);
+    setChatMinimized(available && mobileChatQuery.matches);
   }
 
   function showOfflineLog() {
@@ -605,6 +606,9 @@
     if (!minimized) {
       window.requestAnimationFrame(() => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
+      });
+      mobileChatQuery.addEventListener("change", (event) => {
+        if (event.matches && !chatWidget.hidden) setChatMinimized(true);
       });
     }
   });
