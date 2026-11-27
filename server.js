@@ -318,6 +318,7 @@ function broadcastGame(room, phase = room.game?.phase) {
       } : null,
       swapOwnerId: game.swapOwnerId,
       winnerId: game.winnerId,
+      extraDeckCount: game.deck.length,
       players: gamePlayerList(game, peer.publicId),
       you: peer.publicId
     };
@@ -520,6 +521,12 @@ function resolveRound(room) {
   const game = room.game;
   clearDeadlineTimer(game);
   const owner = game.players.get(game.turnPlayerId);
+  const before = Object.fromEntries([...game.players.values()].map((player) => [player.id, {
+    hp: player.hp,
+    shields: player.shields,
+    luck: player.luck,
+    cards: player.hand.length
+  }]));
   const outcomes = [];
   for (const [id, guess] of game.guesses) {
     const guesser = game.players.get(id);
@@ -529,7 +536,21 @@ function resolveRound(room) {
     card: game.activeCard,
     ownerId: owner.id,
     guesses: Object.fromEntries(game.guesses),
-    outcomes
+    outcomes,
+    attributes: [...game.players.values()].flatMap((player) => {
+      const previous = before[player.id];
+      return [
+        ["hp", player.hp - previous.hp],
+        ["shields", player.shields - previous.shields],
+        ["luck", player.luck - previous.luck],
+        ["cards", player.hand.length - previous.cards]
+      ].filter(([, value]) => value !== 0).map(([attribute, value]) => ({
+        playerId: player.id,
+        playerName: player.nickname,
+        attribute,
+        value
+      }));
+    })
   };
   game.phase = "result";
   checkEliminationsAndWinner(room);

@@ -1973,8 +1973,8 @@
       const own = getRoomPlayer();
       const opponents = getRoomOpponents();
       const positions = mobile
-        ? [{ x: 150, y: 180 }, { x: 390, y: 95 }, { x: 630, y: 180 }]
-        : [{ x: 210, y: 92 }, { x: 550, y: 70 }, { x: 890, y: 92 }];
+        ? [{ x: 620, y: 170 }, { x: 150, y: 95 }, { x: 630, y: 1360 }]
+        : [{ x: 890, y: 88 }, { x: 210, y: 88 }, { x: 1012, y: 548 }];
       opponents.forEach((player, index) => {
         if (!positions[index]) return;
         drawPlayerBadge(ctx, positions[index].x, positions[index].y, {
@@ -2007,6 +2007,8 @@
       );
 
       if (own && !own.eliminated) drawRoomHand(ctx, own.hand || []);
+      drawRoomExtraDeck(ctx);
+      drawRoomGuessMarkers(ctx);
       if (roomState.lastResult) {
         ctx.fillStyle = "rgba(8,20,20,.75)";
         roundRect(ctx, mobile ? 165 : 350, centerY - (mobile ? 245 : 170), mobile ? 450 : 400, mobile ? 72 : 52, 9);
@@ -2015,6 +2017,51 @@
         ctx.font = `bold ${mobile ? 16 : 11}px 'Segoe UI', sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(`${CARDS[roomState.lastResult.card].emoji} ${CARDS[roomState.lastResult.card].name}`, width / 2, centerY - (mobile ? 218 : 148));
+      }
+
+      function drawRoomExtraDeck(ctx) {
+        const mobile = isMobileCanvas();
+        const count = roomState.extraDeckCount || 0;
+        const x = mobile ? 32 : 48;
+        const y = mobile ? 520 : 272;
+        const cardWidth = mobile ? 96 : 76;
+        const cardHeight = mobile ? 138 : 108;
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(226,238,221,.72)";
+        ctx.font = `${mobile ? 15 : 9}px Consolas, monospace`;
+        ctx.fillText("EXTRAS", x + cardWidth / 2, y - 15);
+        if (count > 0) {
+          drawCard(ctx, x + 4, y + 4, null, cardWidth, cardHeight);
+          drawCard(ctx, x, y, null, cardWidth, cardHeight);
+        }
+        ctx.fillStyle = "#c9ef74";
+        ctx.font = `bold ${mobile ? 17 : 11}px Consolas, monospace`;
+        ctx.fillText(String(count), x + cardWidth / 2, y + cardHeight + 20);
+        ctx.restore();
+      }
+
+      function drawRoomGuessMarkers(ctx) {
+        if (!roomState.guesses) return;
+        const mobile = isMobileCanvas();
+        for (const [playerId, guess] of Object.entries(roomState.guesses)) {
+          const player = roomState.players.find((candidate) => candidate.id === playerId);
+          if (!player || !CARD_TYPES.includes(guess)) continue;
+          const position = roomState.you === playerId
+            ? { x: mobile ? 150 : 170, y: mobile ? 1150 : 445 }
+            : (() => {
+              const index = getRoomOpponents().findIndex((candidate) => candidate.id === playerId);
+              return mobile
+                ? [{ x: 530, y: 355 }, { x: 100, y: 280 }, { x: 630, y: 1110 }][index]
+                : [{ x: 800, y: 205 }, { x: 120, y: 205 }, { x: 800, y: 435 }][index];
+            })();
+          if (!position) continue;
+          drawCard(ctx, position.x, position.y, guess, mobile ? 72 : 58, mobile ? 102 : 82);
+          ctx.fillStyle = "rgba(226,238,221,.78)";
+          ctx.font = `${mobile ? 12 : 8}px Consolas, monospace`;
+          ctx.textAlign = "center";
+          ctx.fillText(player.nickname, position.x + (mobile ? 36 : 29), position.y - (mobile ? 12 : 8));
+        }
       }
 
       function drawOpponentMiniHand(ctx, player, x, y, mobile) {

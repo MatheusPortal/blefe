@@ -31,6 +31,14 @@
   let activeNickname = "";
   let publicId = null;
   const pendingMessages = [];
+  let lastRoomResultId = "";
+  const chatCards = {
+    leao: ["🦁", "Leão"], coelho: ["🐇", "Coelho"], vaca: ["🐄", "Vaca"],
+    peixe: ["🐟", "Peixe"], tigre: ["🐅", "Tigre"], macaco: ["🐒", "Macaco"],
+    elefante: ["🐘", "Elefante"], tartaruga: ["🐢", "Tartaruga"],
+    troca: ["🔄", "Troca"], coringa: ["🃏", "Coringa"]
+  };
+  const chatAttributes = { hp: ["Vida", "Vidas"], luck: ["Sorte", "Sorte"], shields: ["Escudo", "Escudos"], cards: ["Carta", "Cartas"] };
 
   async function updateOnlinePlayerCount() {
     try {
@@ -130,6 +138,68 @@
     else if (message?.kind === "system") appendChatMessage("Sistema", message.text);
   }
 
+  function appendRoomResult(state) {
+    const result = state.lastResult;
+    if (!result || !chatCards[result.card]) return;
+    const resultId = `${state.round}:${result.card}:${result.ownerId}`;
+    if (resultId === lastRoomResultId) return;
+    lastRoomResultId = resultId;
+    const item = document.createElement("li");
+    item.className = "chat-message chat-system-message chat-round-result-message";
+    const author = document.createElement("span");
+    author.className = "chat-author";
+    author.textContent = "Sistema:";
+    const card = document.createElement("div");
+    card.className = "chat-result-card";
+    const heading = document.createElement("div");
+    heading.className = "chat-result-heading";
+    const round = document.createElement("span");
+    round.className = "chat-result-round";
+    round.textContent = `R${state.round}`;
+    const title = document.createElement("strong");
+    title.className = "chat-result-title";
+    title.textContent = `${chatCards[result.card][0]} ${chatCards[result.card][1]}`;
+    heading.append(round, title);
+    const outcomes = document.createElement("div");
+    outcomes.className = "chat-result-attributes";
+    for (const guesserId of Object.keys(result.guesses || {})) {
+      const player = state.players.find((candidate) => candidate.id === guesserId);
+      const outcome = result.outcomes?.find((candidate) => candidate.guesserId === guesserId);
+      if (!player || !outcome) continue;
+      const row = document.createElement("div");
+      row.className = "chat-result-attribute";
+      const label = document.createElement("span");
+      label.className = "chat-result-player";
+      label.textContent = `${player.nickname} palpitou ${chatCards[result.guesses[guesserId]][1]}`;
+      const status = document.createElement("strong");
+      status.className = outcome.correct ? "is-gain" : "is-loss";
+      status.textContent = outcome.correct ? "ACERTO" : "ERRO";
+      row.append(label, status);
+      outcomes.append(row);
+    }
+    for (const change of result.attributes || []) {
+      const attributeInfo = chatAttributes[change.attribute];
+      if (!attributeInfo) continue;
+      const row = document.createElement("div");
+      row.className = `chat-result-attribute ${change.attribute}`;
+      const player = document.createElement("span");
+      player.className = "chat-result-player";
+      player.textContent = change.playerName;
+      const value = document.createElement("strong");
+      value.className = change.value > 0 ? "is-gain" : "is-loss";
+      value.textContent = `${change.value > 0 ? "+" : "−"}${Math.abs(change.value)}`;
+      const label = document.createElement("span");
+      label.className = "chat-result-label";
+      label.textContent = Math.abs(change.value) === 1 ? attributeInfo[0] : attributeInfo[1];
+      row.append(player, value, label);
+      outcomes.append(row);
+    }
+    card.append(heading, outcomes);
+    item.append(author, card);
+    chatMessages.append(item);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
   function renderRooms(rooms) {
     roomList.replaceChildren();
     if (!rooms.length) {
@@ -221,6 +291,7 @@
       });
     } else if (message.type === "game-state") {
       publicId = message.state.you;
+      if (message.state.phase === "result") appendRoomResult(message.state);
       window.BlefeGame.applyRoomSnapshot(message.state);
     } else if (message.type === "room-chat") {
       appendChatMessage(message.from.nickname, message.text, message.from.id === publicId);
@@ -236,6 +307,7 @@
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "leave-room" }));
     activeRoom = null;
     publicId = null;
+    lastRoomResultId = "";
     createRoomButton.hidden = false;
     nicknameInput.disabled = false;
     roomNameInput.disabled = false;
