@@ -63,7 +63,8 @@ async function setup() {
 
 test("eventos offline aparecem em cards com resultado e efeitos", async () => {
   const { elements, window } = await setup();
-  window.BlefeOnline.showOfflineLog();
+  window.BlefeOnline.showOfflineLog("Nina");
+  assert.equal(elements.get("#chat-peer-name").textContent, "contra Nina");
   window.BlefeOnline.logGameEvent("Partida iniciada");
   window.BlefeOnline.logGameEvent({
     kind: "round-result", round: 1, cardType: "leao", playedBy: "Você", guesser: "IA",
@@ -89,7 +90,7 @@ test("eventos offline aparecem em cards com resultado e efeitos", async () => {
 
 test("card preserva ação especial sem repetir alterações", async () => {
   const { elements, window } = await setup();
-  window.BlefeOnline.showOfflineLog();
+  window.BlefeOnline.showOfflineLog("Nina");
   window.BlefeOnline.logGameEvent({
     kind: "round-result", round: 2, cardType: "troca", playedBy: "Você", guesser: "IA",
     guess: "vaca", correct: false, attributes: [],

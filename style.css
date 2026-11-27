@@ -312,12 +312,18 @@ button { font: inherit; }
 .player-hud[hidden] { display: none; }
 .opponent-hud { border-color: rgba(224, 238, 233, .15); }
 .player-hud-heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.player-hud-heading > span:first-child { color: var(--muted); font-size: 11px; }
 .player-hud-name { overflow: hidden; color: var(--text); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .player-hud-turn { margin-left: auto; color: var(--lime); font-size: 11px; }
 .player-hud-turn[hidden] { display: none; }
-.player-hud-stats { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 6px; color: #b8c9c1; font-size: 11px; }
+.player-hud-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; margin-top: 6px; color: #b8c9c1; font-size: 11px; }
 .player-hud-stats strong { display: inline-block; color: var(--text); font-size: 13px; }
+.hud-resource { min-width: 0; }
+.hud-resource-label { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
+.hud-bar { height: 7px; overflow: hidden; border-radius: 999px; background: rgba(224, 238, 233, .12); }
+.hud-bar span { display: block; height: 100%; width: 0; border-radius: inherit; transition: width .3s ease; }
+.health-bar span { background: #ef6c67; }
+.shield-bar span { background: #65baf3; }
+.hud-luck { white-space: nowrap; }
 
 .game-workspace {
   display: grid;
@@ -854,6 +860,8 @@ dialog::backdrop { background: rgba(4, 10, 14, .75); backdrop-filter: blur(4px);
   .topbar { flex-wrap: wrap; }
   .brand-area { gap: 5px; }
   .app-version, .version-status, .version-update { font-size: 9px; }
+  .player-hud-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 8px; }
+  .hud-luck { grid-column: 1 / -1; }
   .brand { font-size: 10px; }
   .brand-mark { width: 25px; height: 25px; }
   .text-button { font-size: 10px; }

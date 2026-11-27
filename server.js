@@ -762,7 +762,7 @@ function handleRoomAction(peer, action) {
   if (action.action === "use-luck") {
     if (game.phase !== "guess" || game.turnPlayerId === player.id) throw new Error("A sorte só pode ser usada ao adivinhar.");
     if (player.luck < 1 || (game.eliminated || []).length) throw new Error("Sorte indisponível.");
-    game.eliminated = shuffle(cardTypes.filter((type) => type !== game.activeCard)).slice(0, 2);
+    game.eliminated = shuffle(cardTypes.filter((type) => type !== game.activeCard)).slice(0, 3);
     player.luck -= 1;
     broadcastGame(room);
     return;

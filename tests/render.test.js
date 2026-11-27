@@ -9,6 +9,7 @@ const geometryCode = source.slice(source.indexOf("  function handCardGeometry(")
 const roundCode = source.slice(source.indexOf("  function updateRoundIndicator("), source.indexOf("  function renderRoom("));
 const hudCode = source.slice(source.indexOf("  function updatePlayerHud("), source.indexOf("  function renderRoom("));
 const tableLayoutCode = source.slice(source.indexOf("  function getTableLayout("), source.indexOf("  function drawRoomTable("));
+const visualEffectCode = source.slice(source.indexOf("  function drawVisualEffect("), source.indexOf("  function drawExtraDeck("));
 
 test("carta jogada permanece no centro ao ser revelada, sobre a pilha", () => {
   for (const mobile of [false, true]) {
@@ -93,25 +94,45 @@ test("monte extra e palpites preservam as laterais e não ficam sob os dados", (
   }
 });
 
-test("HUD mostra atributos e contagem pública do jogador e atualiza mudanças", () => {
-  const elements = Object.fromEntries([".player-hud-name", ".player-hud-turn", ...["hp", "shields", "luck", "cards"].map((stat) => `[data-stat="${stat}"]`)]
-    .map((selector) => [selector, { textContent: "" }]));
+test("HUD atualiza vida, escudo sem limite e sorte", () => {
+  const elements = Object.fromEntries([".player-hud-name", ".player-hud-turn", ...["hp", "shields", "luck"].map((stat) => `[data-stat="${stat}"]`), ...["hp", "shields"].map((stat) => `[data-bar="${stat}"]`)]
+    .map((selector) => [selector, { textContent: "", style: {} }]));
   const hud = { querySelector: (selector) => elements[selector] };
   const update = vm.runInNewContext(`${hudCode}\nupdatePlayerHud`, {
     window: { matchMedia: () => ({ matches: true }) }
   });
-  update(hud, { nickname: "Bia", hp: 4, shields: 2, luck: 1 }, 7, true);
+  update(hud, { nickname: "Bia", hp: 4, shields: 2, luck: 1 }, true);
   assert.equal(hud.hidden, false);
   assert.equal(elements[".player-hud-name"].textContent, "Bia");
   assert.equal(elements[".player-hud-turn"].hidden, false);
-  assert.equal(elements['[data-stat="cards"]'].textContent, "7");
-  update(hud, { name: "IA", hp: 2, shields: 0, luck: 3 }, 3, false);
-  assert.equal(elements[".player-hud-name"].textContent, "IA");
+  assert.equal(elements['[data-bar="hp"]'].style.width, "80%");
+  assert.equal(elements['[data-bar="shields"]'].style.width, "40%");
+  update(hud, { name: "Nina", hp: 2, shields: 8, luck: 3 }, false);
+  assert.equal(elements[".player-hud-name"].textContent, "Nina");
   assert.equal(elements['[data-stat="hp"]'].textContent, "2");
-  assert.equal(elements['[data-stat="shields"]'].textContent, "0");
+  assert.equal(elements['[data-stat="shields"]'].textContent, "8");
   assert.equal(elements['[data-stat="luck"]'].textContent, "3");
-  assert.equal(elements['[data-stat="cards"]'].textContent, "3");
+  assert.equal(elements['[data-bar="hp"]'].style.width, "40%");
+  assert.equal(elements['[data-bar="shields"]'].style.width, "100%");
   assert.equal(elements[".player-hud-turn"].hidden, true);
-  update(hud, null, undefined, false);
+  update(hud, null, false);
   assert.equal(hud.hidden, true);
+});
+
+test("revelação não desenha círculo ou exclamação, mas troca mantém animação", () => {
+  const calls = [];
+  const ctx = new Proxy({}, {
+    get(_target, key) { return (...args) => calls.push([key, ...args]); },
+    set() { return true; }
+  });
+  const state = { visualEffect: { kind: "reveal", correct: false }, visualEffectStartedAt: 0 };
+  const draw = vm.runInNewContext(`${visualEffectCode}\ndrawVisualEffect`, {
+    state, performance: { now: () => 500 }, isMobileCanvas: () => false, canvasWidth: 1100,
+    roundRect() {}
+  });
+  draw(ctx);
+  assert.ok(!calls.some(([method]) => method === "ellipse" || method === "fillText"));
+  state.visualEffect.kind = "swap";
+  draw(ctx);
+  assert.ok(calls.some(([method, text]) => method === "fillText" && text === "MÃOS TROCADAS"));
 });

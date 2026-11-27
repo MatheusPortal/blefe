@@ -100,9 +100,9 @@
     setChatMinimized(available && mobileChatQuery.matches);
   }
 
-  function showOfflineLog() {
+  function showOfflineLog(opponentName) {
     clearChat();
-    chatPeerName.textContent = "contra a IA";
+    chatPeerName.textContent = `contra ${opponentName}`;
     setChatAvailability(true, false, "Log da partida");
   }
 

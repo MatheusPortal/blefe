@@ -20,6 +20,8 @@
   const INITIAL_HAND_SIZE = 7;
   const MAX_INITIAL_CARDS_PER_SPECIES = 3;
   const MAX_LUCK = 5;
+  const AI_NAME = "Nina";
+  const LUCK_ELIMINATIONS = 3;
   const CARDS = {
     leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro — adversário: −2 vidas, +1 carta; quem jogou: +1 sorte." },
     coelho: { name: "Coelho", emoji: "🐇", color: "#bd9bfa", effect: "Erro — adversário: +3 cartas; quem jogou: +2 sorte. Acerto — quem adivinhou: +1 sorte." },
@@ -223,7 +225,7 @@
     onlineSession = null;
     onlineNames = null;
     connectionLogButton.hidden = true;
-    window.BlefeOnline?.showOfflineLog();
+    window.BlefeOnline?.showOfflineLog(AI_NAME);
     learningLoadPromise = loadGlobalLearning();
     showGameView();
     startGame();
@@ -520,7 +522,7 @@
 
   function startGame() {
     clearGameTimers();
-    if (!onlineRole) window.BlefeOnline?.showOfflineLog();
+    if (!onlineRole) window.BlefeOnline?.showOfflineLog(AI_NAME);
     hoverCard = -1;
     hoverOpponentCard = -1;
     swapRequestPending = false;
@@ -537,7 +539,7 @@
           dealInitialHand(extraDeck, extraDiscard)
         ),
         ai: makePlayer(
-          onlineNames ? onlineNames.remote : "IA",
+          onlineNames ? onlineNames.remote : AI_NAME,
           dealInitialHand(extraDeck, extraDiscard)
         )
       },
@@ -819,7 +821,7 @@
       ? `Vez do jogador ${state.players.player.name}.`
       : isOnlineHost()
         ? `Aguardando a jogada de ${state.players.ai.name}.`
-        : "A IA começa.";
+        : `${state.players.ai.name} começa.`;
     state.log = `${state.players[playerKey].name} começa.`;
     recordSystemEvent(`Rodada ${state.round}: Vez do jogador ${state.players[playerKey].name}.`);
     if (playerKey === "player") {
@@ -1128,7 +1130,7 @@
       state.phase = "ai-guess";
       state.message = isOnlineHost()
         ? `Aguardando o palpite de ${state.players.ai.name}.`
-        : "A IA está escolhendo o palpite.";
+        : `${state.players.ai.name} está escolhendo o palpite.`;
       if (isOnlineHost()) recordSystemEvent(state.message);
       render();
       if (isOnlineHost()) {
@@ -1315,7 +1317,6 @@
       summary: state.message,
       revealedCards: []
     };
-    triggerVisualEffect("reveal", { cardType: actualType, correct });
     state.pending = null;
     state.pendingJokerReveal = null;
     state.publicDiscards.push(actualType);
@@ -1471,7 +1472,7 @@
     const guesser = state.players[guesserKey];
     if (guesser.luck < 1 || state.hintUsed || !state.pending) return;
     const wrongOptions = shuffle(CARD_TYPES.filter((type) => type !== state.pending.type));
-    state.eliminated = wrongOptions.slice(0, Math.min(2, wrongOptions.length));
+    state.eliminated = wrongOptions.slice(0, LUCK_ELIMINATIONS);
     if (state.eliminated.length === 0) return;
     state.hintUsed = true;
     guesser.luck -= 1;
@@ -1479,7 +1480,7 @@
     const eliminatedNames = state.eliminated.map((type) => CARDS[type].name).join(" nem ");
     state.log = `Sorte: não é ${eliminatedNames}.`;
     state.message = state.log;
-    recordSystemEvent(`${guesser.name} usou sorte para eliminar duas opções.`);
+    recordSystemEvent(`${guesser.name} usou sorte para eliminar três opções.`);
     render();
   }
 
@@ -1526,7 +1527,7 @@
       return;
     }
     state.phase = "ai-play";
-    state.message = "A IA joga...";
+    state.message = `${state.players.ai.name} joga...`;
     render();
     aiTimeout = window.setTimeout(() => {
       if (state.gameOver || state.phase !== "ai-play") return;
@@ -1562,8 +1563,8 @@
     }
     if (!state) return;
     drawTable();
-    updatePlayerHud(ownHud, state.players.player, state.phase === "dealing" ? state.dealt.player : state.players.player.hand.length, !state.gameOver && state.startingPlayer === "player");
-    updatePlayerHud(opponentHud, state.players.ai, state.phase === "dealing" ? state.dealt.ai : state.players.ai.hand.length, !state.gameOver && state.startingPlayer === "ai");
+    updatePlayerHud(ownHud, state.players.player, !state.gameOver && state.startingPlayer === "player");
+    updatePlayerHud(opponentHud, state.players.ai, !state.gameOver && state.startingPlayer === "ai");
     updateRoundIndicator(state.round, !state.startingPlayer);
     updateTimer();
     roundCountdown.hidden = state.phase !== "result" || state.pauseSeconds <= 0;
@@ -1891,7 +1892,7 @@
     if (
       !validCard(snapshot.setupCard)
       || !Array.isArray(snapshot.eliminated)
-      || snapshot.eliminated.length > 2
+      || snapshot.eliminated.length > LUCK_ELIMINATIONS
       || !snapshot.eliminated.every((type) => CARD_TYPES.includes(type))
     ) return false;
     if (!validGuessSet(snapshot.guesses) || !validGuessSet(snapshot.setupGuesses)) return false;
@@ -1923,7 +1924,7 @@
 
   function getCanvasDescription() {
     const playerName = onlineRole ? state.players.player.name : "Você";
-    const opponentName = onlineRole ? state.players.ai.name : "IA";
+    const opponentName = state.players.ai.name;
     return `${playerName}: ${state.players.player.hand.length} cartas, ${state.players.player.hp} vidas. ${opponentName}: ${state.players.ai.hand.length} cartas, ${state.players.ai.hp} vidas. ${state.message}`;
   }
 
@@ -2007,18 +2008,21 @@
     roundIndicator.setAttribute("aria-label", opening ? "Abertura" : `Rodada ${round}`);
   }
 
-  function updatePlayerHud(element, player, cardCount, active) {
+  function updatePlayerHud(element, player, active) {
     element.hidden = !player;
     if (!player) return;
     element.querySelector(".player-hud-name").textContent = player.nickname || player.name;
     element.querySelector(".player-hud-turn").hidden = !active;
-    for (const [stat, value] of Object.entries({ hp: player.hp, shields: player.shields, luck: player.luck, cards: cardCount })) {
+    for (const [stat, value] of Object.entries({ hp: player.hp, shields: player.shields, luck: player.luck })) {
       const target = element.querySelector(`[data-stat="${stat}"]`);
       const next = String(value);
       if (target.textContent && target.textContent !== next && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         target.animate([{ color: "#c9ef74", transform: "scale(1.25)" }, { color: "inherit", transform: "scale(1)" }], { duration: 600 });
       }
       target.textContent = next;
+    }
+    for (const stat of ["hp", "shields"]) {
+      element.querySelector(`[data-bar="${stat}"]`).style.width = `${Math.min(player[stat], 5) * 20}%`;
     }
   }
 
@@ -2027,8 +2031,8 @@
       drawTable();
       const localPlayer = getRoomPlayer();
       const opponent = getRoomOpponents()[0];
-      updatePlayerHud(ownHud, localPlayer, localPlayer?.handCount, roomState.phase !== "finished" && roomState.turnPlayerId === localPlayer?.id);
-      updatePlayerHud(opponentHud, opponent, opponent?.handCount, roomState.phase !== "finished" && roomState.turnPlayerId === opponent?.id);
+      updatePlayerHud(ownHud, localPlayer, roomState.phase !== "finished" && roomState.turnPlayerId === localPlayer?.id);
+      updatePlayerHud(opponentHud, opponent, roomState.phase !== "finished" && roomState.turnPlayerId === opponent?.id);
       updateRoundIndicator(roomState.round, roomState.opening);
       roundCountdown.hidden = !roomState.nextTurnAt;
       if (roomState.nextTurnAt) {
@@ -2043,6 +2047,7 @@
         useLuckButton.hidden = false;
         useLuckButton.disabled = !own || own.luck < 1 || (roomState.eliminated || []).length > 0;
         useLuckButton.textContent = `✦ Usar sorte (${own?.luck || 0})`;
+        useLuckButton.setAttribute("aria-label", `Usar sorte: ${own?.luck || 0}`);
       }
       swapHandsButton.hidden = roomState.swapOwnerId !== roomState.you;
       tableOverlay.hidden = roomState.phase !== "finished";
@@ -2387,7 +2392,7 @@
                 ? state.phase === "ai-play" ? "AGUARDANDO JOGADA"
                   : state.phase === "ai-guess" ? "AGUARDANDO PALPITE"
                     : "AGUARDANDO ADVERSÁRIO"
-                : "A IA PENSA";
+                : `${state.players.ai.name.toUpperCase()} PENSA`;
     drawPhaseLabel(ctx, phaseText, width / 2, 250, false);
 
     if (state.phase === "dice-roll") drawDice(ctx);
@@ -2435,7 +2440,7 @@
                   ? state.phase === "ai-play" ? "AGUARDANDO JOGADA"
                     : state.phase === "ai-guess" ? "AGUARDANDO PALPITE"
                       : "AGUARDANDO ADVERSÁRIO"
-                  : "IA PENSA";
+                  : `${state.players.ai.name.toUpperCase()} PENSA`;
     drawPhaseLabel(ctx, phaseText, width / 2, 480, true);
 
     if (state.phase === "dice-roll") drawDice(ctx);
@@ -2479,19 +2484,6 @@
       ctx.fillText("⇄", centerX, centerY);
       ctx.font = `bold ${mobile ? 18 : 13}px 'Segoe UI', sans-serif`;
       ctx.fillText("MÃOS TROCADAS", centerX, centerY + (mobile ? 78 : 58));
-    } else if (state.visualEffect.kind === "reveal") {
-      const radius = (mobile ? 72 : 54) + progress * (mobile ? 130 : 110);
-      ctx.strokeStyle = state.visualEffect.cardType
-        ? CARDS[state.visualEffect.cardType].color
-        : "#c9ef74";
-      ctx.lineWidth = mobile ? 5 : 3;
-      ctx.beginPath();
-      ctx.ellipse(centerX, centerY, radius, radius * (mobile ? 0.62 : 0.54), 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = state.visualEffect.correct ? "#c9ef74" : "#ff887d";
-      ctx.font = `bold ${mobile ? 22 : 17}px 'Segoe UI', sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillText(state.visualEffect.correct ? "✓" : "!", centerX, centerY - (mobile ? 150 : 116));
     }
     ctx.restore();
   }

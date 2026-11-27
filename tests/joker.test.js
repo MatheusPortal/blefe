@@ -168,3 +168,17 @@ test("IA troca a melhor carta revelada por uma própria", () => {
   assert.equal(f.state.gameOver, false);
   assert.equal(f.state.pendingJokerReveal, null);
 });
+
+test("sorte online elimina três opções erradas e só pode ser usada uma vez", () => {
+  const f = fixture(["tigre"], ["peixe"]);
+  f.target.luck = 2;
+  f.handleRoomAction(f.targetPeer, { action: "use-luck" });
+  const eliminated = f.room.game.eliminated;
+  assert.equal(eliminated.length, 3);
+  assert.equal(new Set(eliminated).size, 3);
+  assert.ok(!eliminated.includes(f.room.game.activeCard));
+  assert.equal(f.target.luck, 1);
+  assert.deepEqual(snapshot(f.targetPeer).eliminated, eliminated);
+  assert.throws(() => f.handleRoomAction(f.targetPeer, { action: "use-luck" }));
+  assert.throws(() => f.handleRoomAction(f.targetPeer, { action: "guess", guess: eliminated[0] }));
+});

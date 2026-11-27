@@ -1,12 +1,12 @@
 # Blefe de Mesa
 
-Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É possível jogar offline contra a IA ou online em salas de 2 jogadores.
+Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É possível jogar offline contra Nina, a IA, ou online em salas de 2 jogadores.
 
 ## Como iniciar
 
 ### Modo offline
 
-Abra `index.html` em um navegador moderno e escolha **Jogar offline vs. IA**. Não é necessário instalar pacotes nem estar conectado à internet para jogar offline.
+Abra `index.html` em um navegador moderno e escolha **Jogar offline vs. Nina**. Não é necessário instalar pacotes nem estar conectado à internet para jogar offline.
 
 ### Servidor local e modo online
 
@@ -29,17 +29,17 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 - No modo online, um jogador joga por turno e todos os demais adivinham simultaneamente.
 - Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ampliá-las e ver os efeitos em indicadores como nos cards das regras; clique para jogar. Ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
 - A carta jogada fica virada para baixo no centro até o palpite e é revelada no mesmo lugar, sobre a pilha crescente de cartas já reveladas.
-- Os atributos dos jogadores e a rodada atual ficam acima da mesa. O cronômetro e as habilidades ficam dentro da mesa, enquanto o monte extra e os palpites ocupam a região central, deixando as laterais livres.
+- Vida, escudo e sorte dos jogadores e a rodada atual ficam acima da mesa. A barra de escudo fica cheia a partir de 5, mas o número mostra o total real, que não tem limite. O cronômetro e as habilidades ficam dentro da mesa, enquanto o monte extra e os palpites ocupam a região central, deixando as laterais livres.
 - As opções de palpite formam um leque de cartas. Ao lado da mesa, o chat exibe eventos do sistema e resultados das cartas em cards; no modo offline, funciona como log sem envio de mensagens.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
 - Cada partida sorteia uma das três mesas: verde, azul ou vinho. No online, os dois jogadores veem a mesma mesa.
-- As jogadas emitem o mesmo som, sem revelar a identidade da carta antes do palpite; o áudio pode ser desligado. Ganhos e perdas de vida, sorte, escudos e cartas são destacados com animações junto aos indicadores dos jogadores.
+- As jogadas emitem o mesmo som, sem revelar a identidade da carta antes do palpite; o áudio pode ser desligado. Ganhos e perdas de vida, sorte e escudos são destacados junto aos indicadores dos jogadores.
 - No online, a mão adversária permanece no topo, inclusive durante a seleção de cartas do Coringa. Em telas pequenas, a mesa ocupa a largura disponível e a página pode ser rolada.
 - Na distribuição inicial, cada jogador pode receber no máximo 3 cartas do mesmo animal. Troca e Coringa são únicas no baralho.
 - Cartas bônus são compradas apenas do monte restante das 42 cartas. Quando ele acaba, não surgem cartas novas.
 - Cartas jogadas não voltam à mão.
 - Leão: um palpite errado tira 2 vidas de quem adivinhou.
-- Coelho: um palpite certo dá 1 ponto de sorte a quem adivinhou. Gastar sorte elimina duas opções incorretas durante um palpite.
+- Coelho: um palpite certo dá 1 ponto de sorte a quem adivinhou. Gastar sorte elimina três opções incorretas durante um palpite.
 - Vaca: um palpite errado dá 2 cartas extras a quem adivinhou.
 - Peixe: ao errar, o adversário compra 2 cartas e perde até 3 escudos; quem jogou ganha 1 sorte e 1 vida.
 - Tigre: um palpite errado tira 1 vida.

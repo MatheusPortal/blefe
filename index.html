@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173d35">
-  <meta name="application-version" content="1.1.0">
+  <meta name="application-version" content="1.2.0">
   <title>Blefe de Mesa — Cartas & Estratégia</title>
-  <link rel="stylesheet" href="style.css?v=1.1.0">
+  <link rel="stylesheet" href="style.css?v=1.2.0">
 </head>
 <body>
   <main class="app">
@@ -36,7 +36,7 @@
         <h1 id="menu-title">A mesa está pronta.</h1>
         <p>Escolha como quer jogar.</p>
         <div class="menu-actions">
-          <button class="primary-button menu-button" id="offline-button" type="button">Jogar offline <span>vs. IA</span></button>
+          <button class="primary-button menu-button" id="offline-button" type="button">Jogar offline <span>vs. Nina (IA)</span></button>
           <button class="secondary-button menu-button" id="online-button" type="button">Jogar online <span id="online-player-count" aria-live="polite">Carregando...</span></button>
           <button class="text-button menu-rules-button" id="menu-rules-button" type="button">Como jogar</button>
         </div>
@@ -46,12 +46,17 @@
     <section class="game-shell" id="game-shell" aria-label="Jogo de cartas" hidden>
       <header class="match-header" aria-label="Informações da partida">
         <section class="player-hud" id="own-hud" aria-label="Seus atributos" hidden>
-          <div class="player-hud-heading"><span>Você</span><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
+          <div class="player-hud-heading"><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
           <div class="player-hud-stats">
-            <span>♥ <strong data-stat="hp"></strong> Vida</span>
-            <span>⬡ <strong data-stat="shields"></strong> Escudo</span>
-            <span>✦ <strong data-stat="luck"></strong> Sorte</span>
-            <span>▣ <strong data-stat="cards"></strong> Cartas</span>
+            <div class="hud-resource">
+              <div class="hud-resource-label"><span>Vida</span><span><strong data-stat="hp"></strong>/5</span></div>
+              <div class="hud-bar health-bar" aria-hidden="true"><span data-bar="hp"></span></div>
+            </div>
+            <div class="hud-resource" title="A barra fica cheia a partir de 5 escudos; não há limite de escudos.">
+              <div class="hud-resource-label"><span>Escudo</span><strong data-stat="shields"></strong></div>
+              <div class="hud-bar shield-bar" aria-hidden="true"><span data-bar="shields"></span></div>
+            </div>
+            <span class="hud-luck">✦ Sorte <strong data-stat="luck"></strong></span>
           </div>
         </section>
         <div class="round-indicator" id="round-indicator" aria-label="Rodada atual">
@@ -59,12 +64,17 @@
           <strong id="round-value">1</strong>
         </div>
         <section class="player-hud opponent-hud" id="opponent-hud" aria-label="Atributos do adversário" hidden>
-          <div class="player-hud-heading"><span>Adversário</span><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
+          <div class="player-hud-heading"><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
           <div class="player-hud-stats">
-            <span>♥ <strong data-stat="hp"></strong> Vida</span>
-            <span>⬡ <strong data-stat="shields"></strong> Escudo</span>
-            <span>✦ <strong data-stat="luck"></strong> Sorte</span>
-            <span>▣ <strong data-stat="cards"></strong> Cartas</span>
+            <div class="hud-resource">
+              <div class="hud-resource-label"><span>Vida</span><span><strong data-stat="hp"></strong>/5</span></div>
+              <div class="hud-bar health-bar" aria-hidden="true"><span data-bar="hp"></span></div>
+            </div>
+            <div class="hud-resource" title="A barra fica cheia a partir de 5 escudos; não há limite de escudos.">
+              <div class="hud-resource-label"><span>Escudo</span><strong data-stat="shields"></strong></div>
+              <div class="hud-bar shield-bar" aria-hidden="true"><span data-bar="shields"></span></div>
+            </div>
+            <span class="hud-luck">✦ Sorte <strong data-stat="luck"></strong></span>
           </div>
         </section>
       </header>
@@ -258,7 +268,7 @@
         <span class="rules-chip is-action">5 de cada animal</span>
         <span class="rules-chip is-action">1 Coringa e 1 Troca</span>
         <span class="rules-chip is-action">Máximo inicial: 3 por animal</span>
-        <span class="rules-chip is-action">Sorte elimina duas opções</span>
+        <span class="rules-chip is-action">Sorte elimina três opções</span>
         <span class="rules-chip is-action">Escudos bloqueiam dano</span>
         <span class="rules-chip is-action">Máximo de 5 vidas</span>
       </div>
@@ -304,9 +314,9 @@
     <ol class="connection-log" id="connection-log" aria-live="polite"></ol>
   </dialog>
 
-  <script src="online.js?v=1.1.0"></script>
-  <script src="ai-policy.js?v=1.1.0"></script>
-  <script src="game.js?v=1.1.0"></script>
-  <script src="version-check.js?v=1.1.0"></script>
+  <script src="online.js?v=1.2.0"></script>
+  <script src="ai-policy.js?v=1.2.0"></script>
+  <script src="game.js?v=1.2.0"></script>
+  <script src="version-check.js?v=1.2.0"></script>
 </body>
 </html>
