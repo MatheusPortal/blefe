@@ -160,6 +160,7 @@ function finishRoom(room, winner) {
   if (room.game) clearDeadlineTimer(room.game);
   room.timer = null;
   room.status = "finished";
+  room.rematchRequests = new Set();
   if (room.game) room.game.winnerId = winner?.publicId || null;
   broadcastRoom(room, {
     type: "game-over",
@@ -303,7 +304,7 @@ function broadcastGame(room, phase = room.game?.phase) {
       phase,
       round: game.round,
       turnPlayerId: game.turnPlayerId,
-      activeCard: phase === "result" || phase === "finished" || phase === "joker-select" ? game.activeCard : null,
+      activeCard: ["setup-result", "dice-roll", "result", "finished", "joker-select"].includes(phase) ? game.activeCard : null,
       hasActiveCard: Boolean(game.activeCard),
       guessCount: ["guess", "setup-guess"].includes(phase) ? game.guesses.size : undefined,
       guessed: ["guess", "setup-guess"].includes(phase) ? game.guesses.has(peer.publicId) : false,
@@ -330,6 +331,7 @@ function broadcastGame(room, phase = room.game?.phase) {
         cards: game.jokerSelection.ownerId === peer.publicId ? [...game.jokerSelection.cards] : []
       } : null,
       winnerId: game.winnerId,
+      rematchRequests: [...(room.rematchRequests || [])],
       extraDeckCount: game.deck.length,
       players: gamePlayerList(game, peer.publicId),
       you: peer.publicId
@@ -620,7 +622,7 @@ function resolveOpening(room) {
       game.lastResult = null;
       broadcastGame(room);
       scheduleDeadline(room);
-    }, 2_400);
+    }, 3_000);
     return;
   }
   game.phase = "dice-roll";
@@ -642,7 +644,7 @@ function resolveOpening(room) {
     game.guesses.clear();
     broadcastGame(room);
     scheduleDeadline(room);
-  }, 2_400);
+  }, 3_000);
 }
 
 function advanceIfNeeded(room) {
@@ -665,7 +667,20 @@ function advanceIfNeeded(room) {
 
 function handleRoomAction(peer, action) {
   const room = peer.room;
-  if (!room || room.status !== "playing" || !action || typeof action !== "object") throw new Error("A partida não está ativa.");
+  if (!room || !action || typeof action !== "object") throw new Error("A sala não está ativa.");
+  if (action.action === "rematch") {
+    if (room.status !== "finished") throw new Error("A partida ainda não terminou.");
+    room.rematchRequests ||= new Set();
+    room.rematchRequests.add(peer.publicId);
+    if (room.rematchRequests.size === room.players.size && room.players.size === 2) {
+      room.rematchRequests.clear();
+      startRoomGame(room);
+      return;
+    }
+    broadcastGame(room, "finished");
+    return;
+  }
+  if (room.status !== "playing") throw new Error("A partida não está ativa.");
   const game = room.game;
   const player = game.players.get(peer.publicId);
   if (!player?.alive) throw new Error("Você não está ativo nesta partida.");

@@ -257,6 +257,10 @@
   }
 
   function requestRematch() {
+    if (onlineRole === "room" && roomState?.phase === "finished") {
+      roomSession?.sendAction({ action: "rematch" });
+      return;
+    }
     if (!onlineRole) {
       startGame();
       return;
@@ -1953,7 +1957,14 @@
       tableOverlay.hidden = roomState.phase !== "finished";
       const winner = roomState.players.find((player) => player.id === roomState.winnerId);
       tableResult.textContent = winner ? `${winner.nickname} venceu a partida!` : "";
-      tableRestartButton.hidden = true;
+      const rematchRequested = roomState.rematchRequests?.includes(roomState.you);
+      const readyCount = roomState.rematchRequests?.length || 0;
+      tableRestartButton.hidden = roomState.phase !== "finished";
+      tableRestartButton.style.display = roomState.phase === "finished" ? "" : "none";
+      tableRestartButton.disabled = rematchRequested;
+      tableRestartButton.textContent = rematchRequested
+        ? readyCount === 2 ? "Reiniciando..." : "Aguardando adversário..."
+        : "Pedir revanche";
       tableFooter.hidden = roomState.phase === "finished";
       restartButton.hidden = true;
       const own = getRoomPlayer();
@@ -2088,18 +2099,18 @@
       }
 
       function drawRoomGuessMarkers(ctx) {
-        if (!roomState.guesses) return;
+        const guesses = roomState.setupGuesses || roomState.guesses;
+        if (!guesses) return;
         const mobile = isMobileCanvas();
-        for (const [playerId, guess] of Object.entries(roomState.guesses)) {
+        for (const [playerId, guess] of Object.entries(guesses)) {
           const player = roomState.players.find((candidate) => candidate.id === playerId);
           if (!player || !CARD_TYPES.includes(guess)) continue;
           const position = roomState.you === playerId
             ? { x: mobile ? 150 : 170, y: mobile ? 1150 : 445 }
             : (() => {
-              const index = getRoomOpponents().findIndex((candidate) => candidate.id === playerId);
-              return mobile
-                ? [{ x: 530, y: 355 }, { x: 100, y: 280 }, { x: 630, y: 1110 }][index]
-                : [{ x: 800, y: 205 }, { x: 120, y: 205 }, { x: 800, y: 435 }][index];
+              return roomState.players.length === 2
+                ? { x: mobile ? 570 : 790, y: mobile ? 280 : 205 }
+                : null;
             })();
           if (!position) continue;
           drawCard(ctx, position.x, position.y, guess, mobile ? 72 : 58, mobile ? 102 : 82);
