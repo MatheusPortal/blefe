@@ -31,11 +31,11 @@ Para validar a sintaxe dos arquivos JavaScript, execute `npm run check`.
 - As opções de palpite formam um leque de cartas. Os avisos da rodada aparecem abaixo da mesa, sem cobrir as cartas; apenas o resultado final fica sobre o tabuleiro.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
 - Cada carta tocada emite um som curto, com controle para ligar ou desligar o áudio. Ganhos e perdas de vida, sorte, escudos e cartas são destacados com animações junto aos indicadores dos jogadores.
-- Existe 2% de chance de um único Coringa entrar na partida, substituindo uma carta inicial.
+- O baralho contém 34 cartas físicas, incluindo exatamente uma Troca e um Coringa. A distribuição inicial de 7 cartas por jogador usa a chance natural dessas cartas no baralho.
 - Cartas bônus são compradas do baralho extra. Quando ele acaba, as cartas extras descartadas são embaralhadas novamente. A mão da IA fica escondida e a mesa mostra no máximo 20 cartas viradas para baixo.
 - Cartas jogadas não voltam à mão.
 - Leão: um palpite errado tira 2 vidas de quem adivinhou.
-- Coelho: um palpite certo dá 1 ponto de sorte a quem adivinhou. Gastar sorte elimina uma opção incorreta durante um palpite.
+- Coelho: um palpite certo dá 1 ponto de sorte a quem adivinhou. Gastar sorte elimina duas opções incorretas durante um palpite.
 - Vaca: um palpite errado dá 2 cartas extras a quem adivinhou.
 - Peixe: acertar dá 1 ponto de sorte; errar tira 1 sorte ou 1 vida.
 - Tigre: um palpite errado tira 1 vida.

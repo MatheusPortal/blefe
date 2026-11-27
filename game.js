@@ -2,20 +2,20 @@
   "use strict";
 
   const CARD_TYPES = ["leao", "coelho", "vaca", "peixe", "tigre", "macaco", "elefante", "tartaruga", "troca", "coringa"];
-  const COMMON_CARDS = CARD_TYPES.filter((type) => type !== "coringa");
+  const SPECIAL_CARDS = ["troca", "coringa"];
+  const COMMON_CARDS = CARD_TYPES.filter((type) => !SPECIAL_CARDS.includes(type));
   const COMMON_CARD_COUNTS = {
-    leao: 5,
+    leao: 4,
     coelho: 4,
     vaca: 4,
     peixe: 4,
     tigre: 4,
     macaco: 4,
     elefante: 4,
-    tartaruga: 4,
-    troca: 1
+    tartaruga: 4
   };
   const COMMON_DECK_SIZE = Object.values(COMMON_CARD_COUNTS).reduce((sum, count) => sum + count, 0);
-  const DECK_SIZE = COMMON_DECK_SIZE + 1;
+  const DECK_SIZE = COMMON_DECK_SIZE + SPECIAL_CARDS.length;
   const INITIAL_HAND_SIZE = 7;
   const MAX_CARDS_PER_SPECIES = 3;
   const MAX_LUCK = 5;
@@ -175,11 +175,11 @@
     return result;
   }
 
-  function createCommonDeck() {
-    const deck = Object.entries(COMMON_CARD_COUNTS).flatMap(([type, count]) => (
+  function createDeck() {
+    const commonDeck = Object.entries(COMMON_CARD_COUNTS).flatMap(([type, count]) => (
       Array(count).fill(type)
     ));
-    return shuffle(deck);
+    return shuffle([...commonDeck, ...SPECIAL_CARDS]);
   }
 
   function dealInitialHand(deck, discard) {
@@ -187,12 +187,12 @@
     const speciesCounts = Object.fromEntries(COMMON_CARDS.map((type) => [type, 0]));
     while (hand.length < INITIAL_HAND_SIZE && deck.length > 0) {
       const type = deck.pop();
-      if (speciesCounts[type] >= MAX_CARDS_PER_SPECIES) {
+      if (!SPECIAL_CARDS.includes(type) && speciesCounts[type] >= MAX_CARDS_PER_SPECIES) {
         discard.push(type);
         continue;
       }
       hand.push(type);
-      speciesCounts[type] += 1;
+      if (!SPECIAL_CARDS.includes(type)) speciesCounts[type] += 1;
     }
     return hand;
   }
@@ -305,7 +305,7 @@
       window.cancelAnimationFrame(resultAnimationFrame);
       resultAnimationFrame = null;
     }
-    const extraDeck = createCommonDeck();
+    const extraDeck = createDeck();
     const extraDiscard = [];
     state = {
       players: {
@@ -339,7 +339,7 @@
       playerPlayHistory: Object.fromEntries(CARD_TYPES.map((type) => [type, 0])),
       playerGuessHistory: Object.fromEntries(CARD_TYPES.map((type) => [type, 0])),
       aiPlayHistory: Object.fromEntries(CARD_TYPES.map((type) => [type, 0])),
-      eliminated: null,
+      eliminated: [],
       hintUsed: false,
       gameOver: false,
       rematch: { player: false, ai: false },
@@ -358,15 +358,7 @@
       attributeAnimationFrame = null;
     }
 
-    if (Math.random() < 0.02) {
-      const recipientKey = Math.random() < 0.5 ? "player" : "ai";
-      const recipient = state.players[recipientKey];
-      const replacementIndex = Math.floor(Math.random() * recipient.hand.length);
-      state.extraDeck.push(recipient.hand[replacementIndex]);
-      state.extraDeck = shuffle(state.extraDeck);
-      recipient.hand[replacementIndex] = "coringa";
-      state.jokerDistributed = true;
-    }
+    state.jokerDistributed = state.players.player.hand.includes("coringa") || state.players.ai.hand.includes("coringa");
     state.aiHasJoker = state.players.ai.hand.includes("coringa");
 
     recordSystemEvent("Partida iniciada. Boa sorte!");
@@ -464,7 +456,7 @@
       const hand = state.players.ai.hand;
       playCard("ai", hand[Math.floor(Math.random() * hand.length)]);
     } else if (isOnlineHost() && state.phase === "ai-guess") {
-      const choices = CARD_TYPES.filter((type) => type !== state.eliminated);
+      const choices = CARD_TYPES.filter((type) => !state.eliminated.includes(type));
       submitGuess("ai", choices[Math.floor(Math.random() * choices.length)]);
     } else if (isOnlineHost() && state.phase === "setup-guess") {
       if (!state.setupGuesses.player) {
@@ -499,7 +491,7 @@
       state.log = "Tempo esgotado: carta escolhida automaticamente.";
       playCard("player", type);
     } else if (state.phase === "player-guess") {
-      const choices = CARD_TYPES.filter((type) => type !== state.eliminated);
+      const choices = CARD_TYPES.filter((type) => !state.eliminated.includes(type));
       recordSystemEvent("Tempo esgotado: palpite escolhido automaticamente.");
       submitGuess("player", choices[Math.floor(Math.random() * choices.length)]);
     } else if (state.phase === "setup-guess") {
@@ -624,13 +616,6 @@
     const blocked = Math.min(count, player.extraDrawBlocks);
     player.extraDrawBlocks -= blocked;
     for (let index = blocked; index < count; index += 1) {
-      if (!state.jokerDistributed && Math.random() < 0.02) {
-        state.jokerDistributed = true;
-        if (playerKey === "ai") state.aiHasJoker = true;
-        player.hand.push("coringa");
-        drawn.push("coringa");
-        continue;
-      }
       if (state.extraDeck.length === 0 && state.extraDiscard.length === 0) break;
       const type = drawExtraCard();
       if (!type) break;
@@ -640,13 +625,14 @@
       }
       player.hand.push(type);
       drawn.push(type);
+      if (type === "coringa") state.jokerDistributed = true;
       if (playerKey === "ai" && type === "coringa") state.aiHasJoker = true;
     }
     return { drawn, blocked };
   }
 
   function hasCardsToDraw() {
-    return !state.jokerDistributed || state.extraDeck.length > 0 || state.extraDiscard.length > 0;
+    return state.extraDeck.length > 0 || state.extraDiscard.length > 0;
   }
 
   function describeCardDraw(result) {
@@ -797,6 +783,35 @@
     return true;
   }
 
+  function completeHandSwap(ownerKey) {
+    if (!exchangeHands(ownerKey)) return false;
+    window.clearInterval(clockInterval);
+    window.clearInterval(roundPauseInterval);
+    window.clearTimeout(aiTimeout);
+    state.round += 1;
+    state.pending = null;
+    state.pendingJokerReveal = null;
+    state.guesses = {};
+    state.lastReveal = null;
+    state.eliminated = [];
+    state.hintUsed = false;
+    state.pauseSeconds = 0;
+    state.phase = "player-play";
+    state.message = `Troca concluída. Rodada ${state.round}: vez do jogador ${state.players.player.name}.`;
+    state.log = state.message;
+    recordSystemEvent(state.message);
+    expireSwapAbility();
+    if (state.players.player.hand.length === 0) {
+      endGame("player", `${state.players.player.name} venceu · sem cartas`);
+    } else if (state.players.ai.hand.length === 0) {
+      endGame("ai", `${state.players.ai.name} venceu · sem cartas`);
+    } else {
+      beginTimedPhase();
+    }
+    render();
+    return true;
+  }
+
   function triggerVisualEffect(kind, details = {}) {
     state.visualEffect = {
       id: ++state.visualEffectSequence,
@@ -836,7 +851,7 @@
       render();
       return;
     }
-    exchangeHands("player");
+    completeHandSwap("player");
   }
 
   function expireSwapAbility() {
@@ -872,7 +887,7 @@
     state.pending = { owner: playerKey, type };
     state.lastReveal = null;
     state.guesses = {};
-    state.eliminated = null;
+    state.eliminated = [];
     state.hintUsed = false;
 
     if (playerKey === "player") {
@@ -927,8 +942,9 @@
     if (useLuck) {
       const leastLikely = available
         .filter((type) => probabilities[type] > 0)
-        .sort((a, b) => probabilities[a] - probabilities[b])[0];
-      if (leastLikely && available.length > 1) available.splice(available.indexOf(leastLikely), 1);
+        .sort((a, b) => probabilities[a] - probabilities[b])
+        .slice(0, Math.min(2, available.length - 1));
+      for (const type of leastLikely) available.splice(available.indexOf(type), 1);
     }
 
     return sampleByScore(available, (guess) => {
@@ -1227,14 +1243,15 @@
   function applyLuck(guesserKey) {
     const guesser = state.players[guesserKey];
     if (guesser.luck < 1 || state.hintUsed || !state.pending) return;
-    const wrongOptions = CARD_TYPES.filter((type) => type !== state.pending.type && type !== state.eliminated);
-    if (wrongOptions.length === 0) return;
-    state.eliminated = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
+    const wrongOptions = shuffle(CARD_TYPES.filter((type) => type !== state.pending.type));
+    state.eliminated = wrongOptions.slice(0, Math.min(2, wrongOptions.length));
+    if (state.eliminated.length === 0) return;
     state.hintUsed = true;
     guesser.luck -= 1;
-    state.log = `Sorte: não é ${CARDS[state.eliminated].name}.`;
+    const eliminatedNames = state.eliminated.map((type) => CARDS[type].name).join(" nem ");
+    state.log = `Sorte: não é ${eliminatedNames}.`;
     state.message = state.log;
-    recordSystemEvent(`${guesser.name} usou sorte para eliminar uma opção.`);
+    recordSystemEvent(`${guesser.name} usou sorte para eliminar duas opções.`);
     render();
   }
 
@@ -1445,7 +1462,7 @@
     if (state.gameOver) return;
     const type = message.type;
     if (message.action === "swap-hands" && isSwapAvailable("ai")) {
-      exchangeHands("ai");
+      completeHandSwap("ai");
       return;
     }
     if (message.action === "setup-guess" && COMMON_CARDS.includes(type) && state.phase === "setup-guess") {
@@ -1466,7 +1483,7 @@
       playCard("ai", type);
       return;
     }
-    if (message.action === "guess" && CARD_TYPES.includes(type) && state.phase === "ai-guess" && type !== state.eliminated) {
+    if (message.action === "guess" && CARD_TYPES.includes(type) && state.phase === "ai-guess" && !state.eliminated.includes(type)) {
       submitGuess("ai", type);
       return;
     }
@@ -1539,7 +1556,7 @@
       && player.hand.length <= 40
       && player.hand.every(validCard)
       && COMMON_CARDS.every((type) => player.hand.filter((card) => card === type).length <= MAX_CARDS_PER_SPECIES)
-      && player.hand.filter((card) => card === "coringa").length <= 1
+      && SPECIAL_CARDS.every((type) => player.hand.filter((card) => card === type).length <= 1)
     );
     const validGuessSet = (guesses) => (
       guesses
@@ -1621,7 +1638,12 @@
           && validAttributes(event.attributes))
       )
     ))) return false;
-    if (!validCard(snapshot.setupCard) || !validCard(snapshot.eliminated)) return false;
+    if (
+      !validCard(snapshot.setupCard)
+      || !Array.isArray(snapshot.eliminated)
+      || snapshot.eliminated.length > 2
+      || !snapshot.eliminated.every((type) => CARD_TYPES.includes(type))
+    ) return false;
     if (!validGuessSet(snapshot.guesses) || !validGuessSet(snapshot.setupGuesses)) return false;
     if (snapshot.pending !== null && (
       !snapshot.pending
@@ -1665,7 +1687,7 @@
     } else if (state.phase === "player-guess") {
       CARD_TYPES.forEach((type, index) => {
         const button = addGuessButton(type, () => submitGuess("player", type), index, CARD_TYPES.length);
-        button.disabled = type === state.eliminated;
+        button.disabled = state.eliminated.includes(type);
       });
     }
   }
@@ -2447,6 +2469,8 @@
   });
 
   document.querySelector("#restart-button").addEventListener("click", startGame);
+  useLuckButton.addEventListener("click", useLuck);
+  swapHandsButton.addEventListener("click", useSwapHands);
   tableRestartButton.addEventListener("click", requestRematch);
   document.querySelector("#rules-button").addEventListener("click", () => rulesDialog.showModal());
   document.querySelector("#close-rules").addEventListener("click", () => rulesDialog.close());
