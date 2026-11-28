@@ -2,21 +2,27 @@
   "use strict";
 
   const onlineDialog = document.querySelector("#online-dialog");
+  const createRoomDialog = document.querySelector("#create-room-dialog");
+  const createRoomStatus = document.querySelector("#create-room-status");
   const onlineForm = document.querySelector("#online-form");
   const nicknameInput = document.querySelector("#nickname-input");
   const roomNameInput = document.querySelector("#room-name-input");
-  const rankedRoomInput = document.querySelector("#ranked-room-input");
-  const createRoomButton = document.querySelector("#find-match-button");
   const refreshRoomsButton = document.querySelector("#refresh-rooms-button");
-  const startRoomButton = document.querySelector("#start-room-button");
   const leaveRoomButton = document.querySelector("#cancel-match-button");
+  const offlineUnrankedButton = document.querySelector("#offline-unranked-button");
+  const closeOnlineButton = document.querySelector("#close-online");
   const roomList = document.querySelector("#room-list");
   const onlineStatus = document.querySelector("#online-status");
-  const connectionDialog = document.querySelector("#connection-dialog");
-  const connectionLog = document.querySelector("#connection-log");
-  const connectionStatusButton = document.querySelector("#connection-log-button");
   const leaveGameButton = document.querySelector("#leave-game-button");
   const onlinePlayerCount = document.querySelector("#online-player-count");
+  const waitingRoom = document.querySelector("#waiting-room");
+  const waitingRoomName = document.querySelector("#waiting-room-name");
+  const waitingOwnAvatar = document.querySelector("#waiting-own-avatar");
+  const waitingOwnName = document.querySelector("#waiting-own-name");
+  const waitingPeerAvatar = document.querySelector("#waiting-peer-avatar");
+  const waitingPeerName = document.querySelector("#waiting-peer-name");
+  const waitingPeerStatus = document.querySelector("#waiting-peer-status");
+  const waitingStatus = document.querySelector("#waiting-status");
   const chatWidget = document.querySelector("#game-chat-widget");
   const chatPanel = document.querySelector("#game-chat-panel");
   const chatToggleButton = document.querySelector("#chat-toggle-button");
@@ -31,7 +37,11 @@
   let activeRoom = null;
   let activeNickname = "";
   let publicId = null;
+  let startingOfflineRanked = false;
+  let lobbyCountdown = null;
   const pendingMessages = [];
+  const connectionEvents = [];
+  let connectionChatActive = false;
   let lastRoomResultId = "";
   let lastRoomResultElement = null;
   const chatCards = {
@@ -48,11 +58,14 @@
   async function updateOnlinePlayerCount() {
     try {
       const response = await fetch("/health", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const status = await response.json();
-      onlinePlayerCount.textContent = `${status.playersOnline || 0} online`;
-      onlinePlayerCount.title = "Jogadores conectados às salas";
+      if (!Number.isInteger(status.playersOnline) || status.playersOnline < 0) throw new Error("Contagem inválida");
+      onlinePlayerCount.textContent = `${status.playersOnline} online`;
+      onlinePlayerCount.title = "Conexões ativas no servidor online";
     } catch {
-      onlinePlayerCount.textContent = "indisponível";
+      onlinePlayerCount.textContent = "Contagem indisponível";
+      onlinePlayerCount.title = "Não foi possível carregar a quantidade de jogadores online";
     }
   }
 
@@ -76,16 +89,11 @@
   }
 
   function logConnection(message) {
-    const item = document.createElement("li");
-    item.textContent = `${new Date().toLocaleTimeString("pt-BR")} · ${message}`;
-    connectionLog.append(item);
-    while (connectionLog.children.length > 120) connectionLog.firstElementChild.remove();
-    connectionStatusButton.hidden = false;
-  }
-
-  function setTopbarStatus(message) {
-    connectionStatusButton.textContent = `Salas · ${message}`;
-    connectionStatusButton.hidden = false;
+    if (connectionEvents.at(-1)?.message === message) return;
+    const text = `${new Date().toLocaleTimeString("pt-BR")} · ${message}`;
+    connectionEvents.push({ message, text });
+    if (connectionEvents.length > 100) connectionEvents.shift();
+    if (connectionChatActive) appendChatMessage("Sistema", text, false, true);
   }
 
   function setChatAvailability(available, allowMessages = true, title = "Chat da sala") {
@@ -162,7 +170,7 @@
   function meaningfulEffectNote(summary) {
     if (!summary) return "";
     const details = summary.split(/;\s*|,\s*/).filter((part) => (
-      /bloquead|nenhuma carta comprada|vida já está cheia|sem escudo para perder|sem dano|pode trocar as mãos|revela até 2 cartas|trocou uma carta/i.test(part)
+      /bloquead|nenhuma carta comprada|vida já está cheia|escudo já está cheio|sem escudo para perder|sem dano|pode trocar as mãos|revela até 2 cartas|trocou uma carta/i.test(part)
     ));
     return [...new Set(details)].join("; ");
   }
@@ -293,7 +301,8 @@
       const title = document.createElement("strong");
       title.textContent = room.name;
       const count = document.createElement("span");
-      count.textContent = `${room.ranked ? "Ranqueada · " : ""}${room.playerCount}/2 · ${room.playerCount === 2 ? "Pronta" : "1 vaga"}`;
+      const vacancies = 2 - room.playerCount;
+      count.textContent = `${room.competitive ? "Competitiva · " : room.ranked ? "Ranqueada · " : ""}${room.playerCount}/2 · ${vacancies} ${vacancies === 1 ? "vaga" : "vagas"}`;
       info.append(title, count);
       const join = document.createElement("button");
       join.className = "secondary-button";
@@ -308,21 +317,42 @@
   function updateLobby(room) {
     activeRoom = room;
     const players = room.players || [];
-    const host = room.hostId === publicId;
-    createRoomButton.hidden = true;
-    roomNameInput.disabled = true;
-    nicknameInput.disabled = true;
-    leaveRoomButton.hidden = false;
-    startRoomButton.hidden = !host;
-    startRoomButton.disabled = players.length !== 2;
-    setStatus(`${room.name} · ${players.map((player) => player.nickname).join(" vs. ")} · ${players.length}/2`);
+    const own = players.find((player) => player.id === publicId);
+    const opponent = players.find((player) => player.id !== publicId);
+    if (createRoomDialog.open) createRoomDialog.close();
+    if (onlineDialog.open) onlineDialog.close();
+    document.querySelector("#main-menu").hidden = true;
+    waitingRoom.hidden = false;
+    leaveGameButton.hidden = false;
+    waitingRoomName.textContent = room.name;
+    waitingOwnName.textContent = own?.nickname || activeNickname;
+    waitingOwnAvatar.textContent = (own?.nickname || activeNickname).slice(0, 1).toUpperCase();
+    waitingPeerAvatar.classList.toggle("is-loading", !opponent);
+    waitingPeerAvatar.textContent = opponent ? opponent.nickname.slice(0, 1).toUpperCase() : "";
+    waitingPeerName.textContent = opponent?.nickname || "Aguardando adversário";
+    waitingPeerStatus.textContent = opponent ? "Pronto para jogar" : "Procurando jogador";
+    if (lobbyCountdown !== null) window.clearInterval(lobbyCountdown);
+    lobbyCountdown = null;
+    if (room.startsAt && room.serverTime) {
+      const deadline = Date.now() + Math.max(0, room.startsAt - room.serverTime);
+      const updateCountdown = () => {
+        const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+        waitingStatus.textContent = seconds ? `A partida começa em ${seconds} s` : "Iniciando partida...";
+      };
+      updateCountdown();
+      lobbyCountdown = window.setInterval(updateCountdown, 250);
+    } else {
+      waitingStatus.textContent = opponent
+        ? "Não foi possível iniciar. Saia e entre novamente."
+        : "A partida começará quando outro jogador entrar.";
+    }
     logConnection(`Sala ${room.name}: ${players.length} jogador(es).`);
   }
 
   function joinRoom(roomId, ranked) {
     const token = ranked ? window.BlefeRanking.requireAccount() : null;
     if (ranked && !token) return;
-    activeNickname = ranked ? window.BlefeRanking.getPlayer().nickname : nicknameInput.value.trim().replace(/\s+/g, " ");
+    activeNickname = window.BlefeRanking.getPlayer()?.nickname || nicknameInput.value.trim().replace(/\s+/g, " ");
     if (activeNickname.length < 2 || activeNickname.length > 18) {
       setStatus("Informe seu nickname antes de entrar.");
       nicknameInput.focus();
@@ -333,43 +363,68 @@
 
   function openSocket() {
     if (socket?.readyState === WebSocket.OPEN) {
+      logConnection("Conectado ao servidor.");
       send("list-rooms");
       return;
     }
+    if (socket?.readyState === WebSocket.CONNECTING) return;
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${protocol}//${location.host}/matchmaking`);
     socket.addEventListener("open", () => {
-      setTopbarStatus("conectado");
+      logConnection("Conectado ao servidor.");
+      updateOnlinePlayerCount();
       for (const message of pendingMessages.splice(0)) socket.send(message);
       send("list-rooms");
     });
     socket.addEventListener("message", (event) => handleServerMessage(JSON.parse(event.data)));
     socket.addEventListener("close", () => {
-      setTopbarStatus("desconectado");
+      pendingMessages.length = 0;
       const message = activeRoom
         ? "Conexão perdida. Volte ao menu para entrar novamente em uma sala."
         : "Conexão das salas encerrada.";
       setStatus(message);
+      if (activeRoom && !waitingRoom.hidden) waitingStatus.textContent = message;
+      if (startingOfflineRanked) {
+        startingOfflineRanked = false;
+        closeOnlineButton.disabled = false;
+        offlineUnrankedButton.hidden = false;
+        setStatus("Não foi possível iniciar a partida com ranking. Você pode jogar sem pontuação.");
+      }
       logConnection(message);
-      if (activeRoom) logGameEvent(message);
+      if (connectionChatActive) setChatMinimized(false);
     });
-    socket.addEventListener("error", () => setStatus("Não foi possível conectar às salas."));
+    socket.addEventListener("error", () => {
+      const message = "Não foi possível conectar às salas.";
+      setStatus(message);
+      logConnection(message);
+    });
   }
 
   function handleServerMessage(message) {
-    if (message.type === "room-list") renderRooms(message.rooms);
+    if (message.type === "room-list") {
+      renderRooms(message.rooms);
+      if (!activeRoom && !startingOfflineRanked) setStatus("Escolha uma sala ou crie uma mesa casual.");
+    }
     else if (message.type === "room-created" || message.type === "room-joined") {
       publicId = message.publicId || publicId;
       updateLobby(message.room);
     } else if (message.type === "lobby-update") {
       updateLobby(message.room);
     } else if (message.type === "room-started") {
+      startingOfflineRanked = false;
+      closeOnlineButton.disabled = false;
+      offlineUnrankedButton.hidden = true;
+      if (lobbyCountdown !== null) window.clearInterval(lobbyCountdown);
+      lobbyCountdown = null;
+      waitingRoom.hidden = true;
       lastRoomResultId = "";
       clearChat();
       chatPeerName.textContent = `${message.players.length} jogadores`;
       setChatAvailability(true);
+      connectionChatActive = true;
+      for (const event of connectionEvents) appendChatMessage("Sistema", event.text, false, true);
       onlineDialog.close();
-      setTopbarStatus("em partida");
+      logConnection("Partida online iniciada.");
       window.BlefeGame.startOnlineRoom({
         sendAction: (payload) => send("room-action", { payload }),
         sendChat: (text) => send("chat-room", { text })
@@ -382,75 +437,102 @@
       appendChatMessage(message.from.nickname, message.text, message.from.id === publicId);
     } else if (message.type === "game-over") {
       setStatus(message.winner ? `${message.winner.nickname} venceu a sala.` : "A sala terminou.");
+      if (message.departure) {
+        const action = message.departure.reason === "socket-closed" ? "se desconectou" : "saiu";
+        const result = message.winner ? ` ${message.winner.nickname} venceu por abandono.` : "";
+        logConnection(`${message.departure.player.nickname} ${action} da partida.${result}`);
+      }
     } else if (message.type === "ranking-saved") {
       logGameEvent("Vitória registrada no rank global.");
     } else if (message.type === "ranking-error") {
       logGameEvent(message.message);
       setStatus(message.message);
+      if (createRoomDialog.open) createRoomStatus.textContent = message.message;
+      if (activeRoom && !waitingRoom.hidden) waitingStatus.textContent = message.message;
     } else if (message.type === "error") {
+      if (startingOfflineRanked) {
+        startingOfflineRanked = false;
+        closeOnlineButton.disabled = false;
+        offlineUnrankedButton.hidden = false;
+      }
       setStatus(message.message);
+      if (createRoomDialog.open) createRoomStatus.textContent = message.message;
+      if (activeRoom && !waitingRoom.hidden) waitingStatus.textContent = message.message;
       logConnection(message.message);
-      if (activeRoom) logGameEvent(message.message);
     }
   }
 
   function leaveRoom() {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "leave-room" }));
     activeRoom = null;
+    connectionChatActive = false;
+    connectionEvents.length = 0;
     publicId = null;
     lastRoomResultId = "";
-    createRoomButton.hidden = false;
-    nicknameInput.disabled = false;
-    roomNameInput.disabled = false;
-    leaveRoomButton.hidden = true;
-    startRoomButton.hidden = true;
+    if (lobbyCountdown !== null) window.clearInterval(lobbyCountdown);
+    lobbyCountdown = null;
+    waitingRoom.hidden = true;
     window.BlefeGame.leaveToMenu();
     clearChat();
   }
 
   document.querySelector("#online-button").addEventListener("click", () => {
+    offlineUnrankedButton.hidden = true;
     onlineDialog.showModal();
     openSocket();
     nicknameInput.focus();
   });
   document.querySelector("#offline-button").addEventListener("click", () => {
     leaveRoom();
-    window.BlefeGame.startOffline();
-  });
-  document.querySelector("#ranked-lore-button").addEventListener("click", () => {
+    if (!window.BlefeRanking.getPlayer()) {
+      window.BlefeGame.startOffline();
+      return;
+    }
     const token = window.BlefeRanking.requireAccount();
-    if (!token) return;
-    if (activeRoom) {
-      setStatus("Saia da sala atual antes de iniciar outra partida.");
+    startingOfflineRanked = true;
+    offlineUnrankedButton.hidden = true;
+    onlineDialog.showModal();
+    closeOnlineButton.disabled = true;
+    setStatus("Iniciando partida offline com ranking...");
+    if (!["http:", "https:"].includes(location.protocol)) {
+      startingOfflineRanked = false;
+      closeOnlineButton.disabled = false;
+      offlineUnrankedButton.hidden = false;
+      setStatus("O ranking precisa do servidor. Você pode jogar sem pontuação.");
       return;
     }
     openSocket();
     send("play-ranked-lore", { token });
   });
-  document.querySelector("#menu-rules-button").addEventListener("click", () => document.querySelector("#rules-dialog").showModal());
-  document.querySelector("#close-online").addEventListener("click", () => onlineDialog.close());
-  document.querySelector("#close-connection-log").addEventListener("click", () => connectionDialog.close());
-  connectionStatusButton.addEventListener("click", () => connectionDialog.showModal());
-  refreshRoomsButton.addEventListener("click", () => send("list-rooms"));
-  rankedRoomInput.addEventListener("change", () => {
-    nicknameInput.required = !rankedRoomInput.checked;
+  offlineUnrankedButton.addEventListener("click", () => {
+    offlineUnrankedButton.hidden = true;
+    onlineDialog.close();
+    leaveRoom();
+    window.BlefeGame.startOffline();
   });
-  startRoomButton.addEventListener("click", () => send("start-room"));
+  closeOnlineButton.addEventListener("click", () => onlineDialog.close());
+  onlineDialog.addEventListener("cancel", (event) => {
+    if (startingOfflineRanked) event.preventDefault();
+  });
+  refreshRoomsButton.addEventListener("click", () => send("list-rooms"));
+  document.querySelector("#open-create-room").addEventListener("click", () => {
+    createRoomStatus.textContent = "";
+    createRoomDialog.showModal();
+    roomNameInput.focus();
+  });
+  document.querySelector("#close-create-room").addEventListener("click", () => createRoomDialog.close());
   leaveRoomButton.addEventListener("click", leaveRoom);
   leaveGameButton.addEventListener("click", leaveRoom);
 
   onlineForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const ranked = rankedRoomInput.checked;
-    const token = ranked ? window.BlefeRanking.requireAccount() : null;
-    if (ranked && !token) return;
-    activeNickname = ranked ? window.BlefeRanking.getPlayer().nickname : nicknameInput.value.trim().replace(/\s+/g, " ");
+    activeNickname = window.BlefeRanking.getPlayer()?.nickname || nicknameInput.value.trim().replace(/\s+/g, " ");
     const roomName = roomNameInput.value.trim().replace(/\s+/g, " ");
     if (activeNickname.length < 2 || roomName.length < 2) {
-      setStatus("Informe nickname e nome da sala.");
+      createRoomStatus.textContent = "Informe nickname e nome da sala.";
       return;
     }
-    send("create-room", { nickname: activeNickname, roomName, ranked, token });
+    send("create-room", { nickname: activeNickname, roomName });
   });
 
   chatForm.addEventListener("submit", (event) => {

@@ -15,11 +15,12 @@ function fixture(ownerHand, targetHand) {
     WebSocket: { OPEN: 1 },
     globalThis: { BlefeAI: globalThis.BlefeAI },
     aiLearning: globalThis.BlefeAI.createModel(),
+    rooms: new Map(),
     console: { log() {} },
     setTimeout: (callback, delay) => ({ callback, delay }),
     clearTimeout: () => {}
   };
-  const api = vm.runInNewContext(`${rules}\n({ resolveRound, resolveOpening, handleRoomAction, scheduleLoreAction, getLearning: () => aiLearning, setLearningSaver: (fn) => { saveLearningModel = fn; } })`, context);
+  const api = vm.runInNewContext(`${rules}\n({ resolveRound, resolveOpening, handleRoomAction, scheduleLoreAction, detachPeer, getLearning: () => aiLearning, setLearningSaver: (fn) => { saveLearningModel = fn; } })`, context);
   const peers = ["a", "b"].map((id) => {
     const messages = [];
     return {
@@ -47,6 +48,18 @@ function fixture(ownerHand, targetHand) {
   peers.forEach((peer) => { peer.room = room; });
   return { ...api, room, owner: players[0], target: players[1], ownerPeer: peers[0], targetPeer: peers[1] };
 }
+
+test("saída ou desconexão durante partida informa abandono ao jogador restante", () => {
+  for (const reason of ["socket-closed", "player-left"]) {
+    const f = fixture(["leao"], ["vaca"]);
+    f.detachPeer(f.room, f.targetPeer, reason);
+    const message = f.ownerPeer.messages.find((item) => item.type === "game-over");
+    assert.equal(message.winner.nickname, "A");
+    assert.equal(message.departure.player.nickname, "B");
+    assert.equal(message.departure.reason, reason);
+    assert.equal(f.room.status, "finished");
+  }
+});
 
 test("Lore joga no servidor apenas quando é sua vez", () => {
   const f = fixture(["leao", "vaca"], ["peixe"]);

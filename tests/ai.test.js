@@ -22,6 +22,13 @@ test("avalia efeitos conforme vidas, escudos, baralho e condição de vitória",
     AI.effectValue("coringa", owner, target, false, 5));
 });
 
+test("IA não atribui valor a escudos acima do limite", () => {
+  const owner = { hp: 5, shields: 5, luck: 0, cards: 3 };
+  const target = { hp: 5, shields: 5, luck: 0, cards: 3 };
+  assert.equal(AI.effectValue("vaca", owner, target, false, 0), 0);
+  assert.equal(AI.effectValue("elefante", owner, target, true, 0), 0);
+});
+
 test("recompensas atualizam somente a ação realizada e preservam estatísticas antigas", () => {
   const old = AI.createModel();
   old.version = 1;

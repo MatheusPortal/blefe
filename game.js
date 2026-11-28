@@ -41,6 +41,7 @@
   const CARD_HEIGHT = 160;
   const canvas = document.querySelector("#game-canvas");
   const context = canvas.getContext("2d");
+  const accessibleCards = document.querySelector("#accessible-cards");
   const tableOverlay = document.querySelector("#table-overlay");
   const tableResult = document.querySelector("#table-result");
   const tableRestartButton = document.querySelector("#play-again-button");
@@ -75,7 +76,6 @@
   const mainMenu = document.querySelector("#main-menu");
   const gameShell = document.querySelector("#game-shell");
   const leaveGameButton = document.querySelector("#leave-game-button");
-  const connectionLogButton = document.querySelector("#connection-log-button");
   const restartButton = document.querySelector("#restart-button");
   const MOBILE_CANVAS_WIDTH = 780;
   const MOBILE_CANVAS_HEIGHT = 1520;
@@ -119,6 +119,7 @@
   let learningAvailable = false;
   let learningLoadPromise = null;
   let actionRenderKey = "";
+  let accessibleCardsKey = "";
 
   const isOnlineHost = () => onlineRole === "host";
   const isOnlineGuest = () => onlineRole === "guest";
@@ -216,7 +217,6 @@
     mainMenu.hidden = false;
     gameShell.hidden = true;
     leaveGameButton.hidden = true;
-    connectionLogButton.hidden = true;
     document.body.classList.remove("online-mode");
   }
 
@@ -224,7 +224,6 @@
     onlineRole = null;
     onlineSession = null;
     onlineNames = null;
-    connectionLogButton.hidden = true;
     window.BlefeOnline?.showOfflineLog(AI_NAME);
     learningLoadPromise = loadGlobalLearning();
     showGameView();
@@ -883,8 +882,9 @@
   }
 
   function gainShield(player, amount) {
-    player.shields += amount;
-    return `+${amount} ${amount === 1 ? "escudo" : "escudos"}`;
+    const gained = Math.min(amount, 5 - player.shields);
+    player.shields += gained;
+    return gained ? `+${gained} ${gained === 1 ? "escudo" : "escudos"}` : "escudo já está cheio";
   }
 
   function recoverLifeOrShield(player) {
@@ -892,8 +892,7 @@
       player.hp += 1;
       return "+1 vida";
     }
-    player.shields += 1;
-    return "+1 escudo (vida cheia)";
+    return `${gainShield(player, 1)} (vida cheia)`;
   }
 
   function resolveCardEffect(type, ownerKey, guesserKey, correct) {
@@ -967,8 +966,8 @@
       case "coringa": {
         const healed = Math.min(1, 5 - owner.hp);
         owner.hp += healed;
-        owner.shields += 1;
-        return `${owner.name} +${healed} vida, +1 escudo${owner.hand.length && guesser.hand.length
+        const shield = gainShield(owner, 1);
+        return `${owner.name} +${healed} vida, ${shield}${owner.hand.length && guesser.hand.length
           ? "; revela até 2 cartas e troca 1 por uma carta própria" : ""}`;
       }
       case "troca":
@@ -1586,6 +1585,7 @@
       || (state.phase === "setup-guess" && (!isOnlineHost() || !state.setupGuesses.player)));
     gameShell.classList.toggle("is-choosing", !actionArea.hidden);
     renderActions();
+    renderAccessibleCards();
     canvas.setAttribute("aria-label", getCanvasDescription());
     if (isOnlineHost() && onlineSession && state.phase !== "dealing") {
       onlineSession.send({ kind: "game-state", snapshot: createOnlineSnapshot() });
@@ -1602,12 +1602,17 @@
     }
     useLuckButton.hidden = state.phase !== "player-guess";
     useLuckButton.disabled = state.players.player.luck < 1 || state.hintUsed;
-    useLuckButton.textContent = `✦ Usar sorte (${state.players.player.luck})`;
-    useLuckButton.setAttribute("aria-label", `Usar sorte: ${state.players.player.luck}`);
+    updateLuckButtonLabel(state.players.player.luck);
     swapHandsButton.hidden = !isSwapAvailable("player");
     swapHandsButton.disabled = swapRequestPending;
-    swapHandsButton.textContent = swapRequestPending ? "Aguardando troca..." : "🔄 Trocar mãos";
+    swapHandsButton.textContent = swapRequestPending ? "Aguardando troca..." : "↔ Trocar mãos";
     swapHandsButton.setAttribute("aria-label", "Trocar todas as cartas da mão com o adversário");
+  }
+
+  function updateLuckButtonLabel(luck) {
+    const label = `Usar sorte: ${luck}. Elimina três opções incorretas.`;
+    useLuckButton.setAttribute("aria-label", label);
+    useLuckButton.title = label;
   }
 
   function createOnlineSnapshot() {
@@ -1790,7 +1795,7 @@
       && player.luck <= MAX_LUCK
       && Number.isInteger(player.shields)
       && player.shields >= 0
-      && player.shields <= 10000
+      && player.shields <= 5
       && Number.isInteger(player.extraDrawBlocks)
       && player.extraDrawBlocks >= 0
       && player.extraDrawBlocks <= 10000
@@ -1928,6 +1933,79 @@
     return `${playerName}: ${state.players.player.hand.length} cartas, ${state.players.player.hp} vidas. ${opponentName}: ${state.players.ai.hand.length} cartas, ${state.players.ai.hp} vidas. ${state.message}`;
   }
 
+  function renderAccessibleCards() {
+    const room = onlineRole === "room" && roomState;
+    const ownHand = room
+      ? getRoomPlayer()?.hand || []
+      : state.phase === "dealing"
+        ? state.players.player.hand.slice(0, state.dealt.player)
+        : state.players.player.hand;
+    const selection = room
+      ? roomState.jokerSelection?.ownerId === roomState.you ? roomState.jokerSelection : null
+      : state.phase === "player-joker-select" ? state.pendingJokerReveal : null;
+    const ownAction = room
+      ? roomState.phase === "play" && roomState.turnPlayerId === roomState.you ? "play"
+        : roomState.phase === "joker-swap" && selection ? "swap" : ""
+      : state.phase === "player-play" ? "play"
+        : selection?.stage === "swap" ? "swap" : "";
+    const opponentCount = selection && ["reveal", "select"].includes(selection.stage)
+      ? room
+        ? roomState.players.find((player) => player.id === selection.targetId)?.handCount || 0
+        : state.players[selection.target].hand.length
+      : 0;
+    const revealedCards = selection?.cards || selection?.revealedCards || [];
+    const opponentCards = Array.from({ length: opponentCount }, (_, index) => {
+      const position = selection.selectedIndices.indexOf(index);
+      return { index, type: position < 0 ? null : revealedCards[position], selected: position >= 0 };
+    }).filter((card) => selection.stage === "reveal" || card.selected);
+    const key = JSON.stringify([Boolean(room), ownHand, ownAction, selection?.stage, opponentCards]);
+    if (key === accessibleCardsKey) return;
+    accessibleCardsKey = key;
+    const hadFocus = accessibleCards.contains(document.activeElement);
+    accessibleCards.replaceChildren();
+
+    const ownGroup = document.createElement("div");
+    ownGroup.setAttribute("role", "group");
+    ownGroup.setAttribute("aria-label", "Suas cartas");
+    ownHand.forEach((type, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${index + 1}. ${CARDS[type].name}`;
+      button.setAttribute("aria-label", `Carta ${index + 1}: ${CARDS[type].name}. ${CARDS[type].effect}`);
+      button.disabled = !ownAction;
+      button.addEventListener("click", () => {
+        if (room) {
+          if (ownAction === "play") playRoomCard(index);
+          else roomSession?.sendAction({ action: "joker-swap", index });
+        } else if (ownAction === "play") playCard("player", type);
+        else submitJokerReveal(index);
+      });
+      ownGroup.append(button);
+    });
+    accessibleCards.append(ownGroup);
+
+    if (opponentCards.length) {
+      const opponentGroup = document.createElement("div");
+      opponentGroup.setAttribute("role", "group");
+      opponentGroup.setAttribute("aria-label", selection.stage === "reveal" ? "Revelar cartas do adversário" : "Escolher carta revelada");
+      for (const card of opponentCards) {
+        const button = document.createElement("button");
+        button.type = "button";
+        const description = card.type ? CARDS[card.type].name : "virada";
+        button.textContent = `${card.index + 1}. ${description}`;
+        button.setAttribute("aria-label", `Carta ${card.index + 1} do adversário: ${description}`);
+        button.disabled = selection.stage === "reveal" && card.selected;
+        button.addEventListener("click", () => {
+          if (room) roomSession?.sendAction({ action: selection.stage === "reveal" ? "joker-reveal" : "joker-pick", index: card.index });
+          else submitJokerReveal(card.index);
+        });
+        opponentGroup.append(button);
+      }
+      accessibleCards.append(opponentGroup);
+    }
+    if (hadFocus) (accessibleCards.querySelector("button:not(:disabled)") || canvas).focus();
+  }
+
   function renderActions() {
     if (roomState && onlineRole === "room") {
       const renderKey = `room:${roomState.phase}:${roomState.you}:${roomState.turnPlayerId}:${roomState.guessed}:${(roomState.eliminated || []).join(",")}`;
@@ -2011,18 +2089,14 @@
   function updatePlayerHud(element, player, active) {
     element.hidden = !player;
     if (!player) return;
-    element.querySelector(".player-hud-name").textContent = player.nickname || player.name;
-    element.querySelector(".player-hud-turn").hidden = !active;
+    const name = player.nickname || player.name;
+    element.querySelector(".hud-avatar").textContent = Array.from(name.trim())[0]?.toLocaleUpperCase("pt-BR") || "?";
+    element.classList.toggle("is-active", active);
+    element.setAttribute("aria-label", `${name}: vida ${player.hp} de 5, escudo ${player.shields} de 5, sorte ${player.luck} de 5${active ? ", vez de jogar" : ""}`);
     for (const [stat, value] of Object.entries({ hp: player.hp, shields: player.shields, luck: player.luck })) {
-      const target = element.querySelector(`[data-stat="${stat}"]`);
-      const next = String(value);
-      if (target.textContent && target.textContent !== next && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        target.animate([{ color: "#c9ef74", transform: "scale(1.25)" }, { color: "inherit", transform: "scale(1)" }], { duration: 600 });
-      }
-      target.textContent = next;
-    }
-    for (const stat of ["hp", "shields"]) {
-      element.querySelector(`[data-bar="${stat}"]`).style.width = `${Math.min(player[stat], 5) * 20}%`;
+      const count = Math.max(0, Math.min(5, value));
+      const segments = Array.from({ length: 5 }, (_, index) => index < count ? "16 4" : "0 20");
+      element.querySelector(`[data-stat="${stat}"]`).setAttribute("stroke-dasharray", `${segments.join(" ")} 0 200`);
     }
   }
 
@@ -2046,8 +2120,7 @@
         const own = getRoomPlayer();
         useLuckButton.hidden = false;
         useLuckButton.disabled = !own || own.luck < 1 || (roomState.eliminated || []).length > 0;
-        useLuckButton.textContent = `✦ Usar sorte (${own?.luck || 0})`;
-        useLuckButton.setAttribute("aria-label", `Usar sorte: ${own?.luck || 0}`);
+        updateLuckButtonLabel(own?.luck || 0);
       }
       swapHandsButton.hidden = roomState.swapOwnerId !== roomState.you;
       tableOverlay.hidden = roomState.phase !== "finished";
@@ -2072,6 +2145,7 @@
         && own && !own.eliminated);
       gameShell.classList.toggle("is-choosing", !actionArea.hidden);
       renderActions();
+      renderAccessibleCards();
       const owner = roomState.players.find((player) => player.id === roomState.turnPlayerId);
       canvas.setAttribute("aria-label", roomState.phase === "play"
         ? `${roomState.turnPlayerId === roomState.you ? "Sua vez" : `Vez de ${owner?.nickname || "jogador"}`}. Rodada ${roomState.round}.`
@@ -3163,7 +3237,8 @@
   soundToggle.addEventListener("click", () => {
     soundEnabled = !soundEnabled;
     soundToggle.setAttribute("aria-pressed", String(soundEnabled));
-    soundToggle.textContent = soundEnabled ? "♫ Som ligado" : "♫ Som desligado";
+    soundToggle.setAttribute("aria-label", soundEnabled ? "Desligar som" : "Ligar som");
+    soundToggle.title = soundEnabled ? "Desligar som" : "Ligar som";
     if (soundEnabled) {
       prepareAudio();
       startBackgroundMusic();

@@ -30,7 +30,7 @@ class Element {
   focus() {}
 }
 
-async function setup() {
+async function setup(healthResponse = { ok: true, json: async () => ({ playersOnline: 0 }) }, connecting = false) {
   const elements = new Map();
   const document = {
     querySelector(selector) {
@@ -42,24 +42,116 @@ async function setup() {
   class Socket {
     static OPEN = 1;
     static CONNECTING = 0;
-    constructor() { this.readyState = 1; this.listeners = {}; Socket.instance = this; }
+    constructor() { this.readyState = connecting ? 0 : 1; this.listeners = {}; this.sent = []; Socket.instance = this; }
     addEventListener(type, callback) { this.listeners[type] = callback; }
-    send() {}
+    send(message) { this.sent.push(JSON.parse(message)); }
     emit(message) { this.listeners.message({ data: JSON.stringify(message) }); }
   }
   const window = {
     matchMedia: () => ({ matches: false, addEventListener() {} }),
-    setInterval() {},
-    BlefeGame: { startOnlineRoom() {}, applyRoomSnapshot() {}, leaveToMenu() {} }
+    setInterval() { return 1; },
+    clearInterval() {},
+    BlefeGame: { startOnlineRoom() {}, startOffline() {}, applyRoomSnapshot() {}, leaveToMenu() {} },
+    BlefeRanking: { getPlayer: () => null, requireAccount: () => null }
   };
   const context = vm.createContext({
     document, window, WebSocket: Socket,
-    fetch: async () => ({ json: async () => ({ playersOnline: 0 }) }),
+    fetch: async () => healthResponse,
     location: { protocol: "http:", host: "localhost" }, Date
   });
   vm.runInContext(await readFile(new URL("../online.js", import.meta.url), "utf8"), context);
   return { elements, window, Socket };
 }
+
+test("contagem online mostra conexões ou informa indisponibilidade", async () => {
+  const available = await setup({ ok: true, json: async () => ({ playersOnline: 3 }) });
+  await new Promise(setImmediate);
+  assert.equal(available.elements.get("#online-player-count").textContent, "3 online");
+
+  const unavailable = await setup({ ok: false, status: 503 });
+  await new Promise(setImmediate);
+  assert.equal(unavailable.elements.get("#online-player-count").textContent, "Contagem indisponível");
+});
+
+test("offline com conta solicita partida validada e oferece alternativa se houver erro", async () => {
+  const { elements, window, Socket } = await setup();
+  window.BlefeRanking = { getPlayer: () => ({ nickname: "Ana" }), requireAccount: () => "token" };
+  let startedOffline = false;
+  window.BlefeGame.startOffline = () => { startedOffline = true; };
+  elements.get("#offline-button").listeners.click();
+  assert.ok(Socket.instance.sent.some((message) => message.type === "play-ranked-lore" && message.token === "token"));
+  Socket.instance.emit({ type: "error", message: "Ranking indisponível." });
+  assert.equal(elements.get("#offline-unranked-button").hidden, false);
+  elements.get("#offline-unranked-button").listeners.click();
+  assert.equal(startedOffline, true);
+});
+
+test("falha de conexão não repete partida pendente ao reconectar", async () => {
+  const { elements, window, Socket } = await setup(undefined, true);
+  window.BlefeRanking = { getPlayer: () => ({ nickname: "Ana" }), requireAccount: () => "token" };
+  elements.get("#offline-button").listeners.click();
+  Socket.instance.readyState = 3;
+  Socket.instance.listeners.close();
+  assert.equal(elements.get("#offline-unranked-button").hidden, false);
+  assert.equal(elements.get("#close-online").disabled, false);
+  elements.get("#online-button").listeners.click();
+  Socket.instance.readyState = 1;
+  Socket.instance.listeners.open();
+  assert.ok(Socket.instance.sent.every((message) => message.type !== "play-ranked-lore"));
+});
+
+test("mesa de espera mostra adversário e cancela a contagem quando ele sai", async () => {
+  const { elements, Socket } = await setup();
+  elements.get("#online-button").listeners.click();
+  const socket = Socket.instance;
+  const own = { id: "a", nickname: "Ana" };
+  const opponent = { id: "b", nickname: "Bia" };
+  socket.emit({ type: "room-created", publicId: "a", room: { name: "Mesa", players: [own] } });
+  assert.equal(elements.get("#waiting-room").hidden, false);
+  assert.equal(elements.get("#waiting-peer-name").textContent, "Aguardando adversário");
+  socket.emit({ type: "lobby-update", room: { name: "Mesa", players: [own, opponent], startsAt: Date.now() + 5000, serverTime: Date.now() } });
+  assert.equal(elements.get("#waiting-peer-name").textContent, "Bia");
+  assert.match(elements.get("#waiting-status").textContent, /5 s/);
+  socket.emit({ type: "lobby-update", room: { name: "Mesa", players: [own] } });
+  assert.match(elements.get("#waiting-status").textContent, /outro jogador/);
+});
+
+test("eventos de conexão anteriores e posteriores ao início aparecem uma vez no chat", async () => {
+  const { elements, Socket } = await setup();
+  elements.get("#online-button").listeners.click();
+  const socket = Socket.instance;
+  socket.listeners.open();
+  const room = { name: "Mesa", players: [{ id: "a", nickname: "Ana" }] };
+  socket.emit({ type: "room-created", publicId: "a", room });
+  socket.emit({ type: "lobby-update", room });
+  socket.emit({ type: "room-started", players: [{}, {}] });
+  socket.emit({ type: "error", message: "Erro de conexão de teste." });
+  socket.listeners.close();
+  const messages = elements.get("#chat-messages").children;
+  for (const text of ["Conectado ao servidor.", "Sala Mesa: 1 jogador(es).", "Partida online iniciada.", "Erro de conexão de teste.", "Conexão perdida."]) {
+    assert.equal(messages.filter((message) => message.innerText.includes(text)).length, 1, text);
+  }
+  assert.ok(messages.every((message) => message.className.includes("chat-system-message")));
+  assert.equal(elements.get("#chat-toggle-button").title, "Minimizar chat");
+});
+
+test("chat diferencia abandono de desconexão e informa o vencedor", async () => {
+  for (const [reason, action] of [["socket-closed", "se desconectou"], ["player-left", "saiu"]]) {
+    const { elements, Socket } = await setup();
+    elements.get("#online-button").listeners.click();
+    const socket = Socket.instance;
+    socket.emit({ type: "room-started", players: [{}, {}] });
+    socket.emit({
+      type: "game-over",
+      winner: { id: "a", nickname: "Ana" },
+      departure: { player: { id: "b", nickname: "Bia" }, reason }
+    });
+    const messages = elements.get("#chat-messages").children;
+    assert.equal(messages.filter((message) => message.innerText.includes(`Bia ${action} da partida. Ana venceu por abandono.`)).length, 1);
+    socket.emit({ type: "game-over", winner: { nickname: "Ana" }, departure: null });
+    assert.equal(messages.filter((message) => message.innerText.includes("por abandono")).length, 1);
+  }
+});
 
 test("eventos offline aparecem em cards com resultado e efeitos", async () => {
   const { elements, window } = await setup();
@@ -110,6 +202,17 @@ test("card preserva ação especial sem repetir alterações", async () => {
   assert.equal(jokerCard.innerText.split("+1").length - 1, 1);
 });
 
+test("chat informa quando não é possível ganhar escudo acima do limite", async () => {
+  const { elements, window } = await setup();
+  window.BlefeOnline.showOfflineLog("Lore");
+  window.BlefeOnline.logGameEvent({
+    kind: "round-result", round: 1, cardType: "elefante", playedBy: "Lore",
+    guesser: "Você", guess: "elefante", correct: true, attributes: [],
+    effectSummary: "escudo já está cheio"
+  });
+  assert.match(elements.get("#chat-messages").children[0].innerText, /escudo já está cheio/);
+});
+
 test("resultado online final e atualizações permanecem em um único card", async () => {
   const { elements, Socket } = await setup();
   elements.get("#online-button").listeners.click();
@@ -128,8 +231,9 @@ test("resultado online final e atualizações permanecem em um único card", asy
   socket.emit({ type: "game-state", state });
   socket.emit({ type: "game-state", state: { ...state, lastResult: { ...result, jokerSwap: true } } });
   const messages = elements.get("#chat-messages").children;
-  assert.equal(messages.length, 1);
+  const resultCards = messages.filter((message) => message.className.includes("chat-round-result-message"));
+  assert.equal(resultCards.length, 1);
   for (const text of ["Coringa", "Bia palpitou Vaca", "ERRO", "+1", "Escudo", "Coringa trocou uma carta"]) {
-    assert.ok(messages[0].innerText.includes(text), text);
+    assert.ok(resultCards[0].innerText.includes(text), text);
   }
 });

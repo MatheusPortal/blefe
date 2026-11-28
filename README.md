@@ -6,7 +6,7 @@ Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É poss
 
 ### Modo offline
 
-Abra `index.html` em um navegador moderno e escolha **Jogar offline vs. Lore**. Não é necessário instalar pacotes nem estar conectado à internet para jogar offline.
+Abra `index.html` em um navegador moderno e escolha **Offline**. Sem conta, é possível jogar sem instalar pacotes ou conectar à internet, mas a partida não conta para o ranking.
 
 ### Servidor local e modo online
 
@@ -17,11 +17,11 @@ npm ci
 npm start
 ```
 
-Abra `http://localhost:10000` em dois navegadores ou dispositivos e escolha **Jogar online**. Informe um nickname, crie uma sala ou entre em uma sala disponível. O anfitrião inicia quando os dois jogadores estiverem na sala.
+Abra `http://localhost:10000` em dois navegadores ou dispositivos e escolha **Online**. Informe um nickname, crie uma sala casual ou entre em uma sala disponível. O servidor mantém três mesas competitivas disponíveis; elas exigem contas de ambos os jogadores. A partida começa automaticamente cinco segundos após a entrada do segundo jogador; se alguém sair, a contagem é cancelada. A lista informa a quantidade de conexões ativas no servidor online. Se alguém sair ou se desconectar durante a partida, o chat informa o abandono e o vencedor.
 
 ### Rank global
 
-O botão **Rank global** exibe até 100 nomes ordenados por vitórias em partidas ranqueadas. Para participar, crie uma conta com e-mail, senha e apelido, confirme o e-mail e entre na conta. O apelido Lore é reservado. Uma sala online só conta para o ranking quando criada como **Sala ranqueada** e ambos os jogadores usam contas diferentes. Também é possível jogar uma **Partida ranqueada vs. Lore**: nessa modalidade a partida é conduzida pelo servidor e as vitórias da Lore também entram no ranking. Uma desistência ou desconexão durante uma partida ranqueada dá a vitória ao adversário. Partidas offline e salas casuais não contam.
+O botão **Rank global** exibe até 100 nomes ordenados por vitórias. Para participar, crie uma conta com e-mail, senha e apelido, confirme o e-mail e entre na conta. O apelido Lore é reservado. As mesas competitivas contam para o ranking quando ambos os jogadores usam contas diferentes. Ao escolher **Offline** com uma conta conectada, a partida contra Lore é conduzida pelo servidor e as vitórias de ambos contam. Se o servidor estiver indisponível, é possível escolher jogar sem pontuação. Uma desistência ou desconexão durante uma partida com ranking dá a vitória ao adversário. Partidas de convidados e salas casuais não contam.
 
 O servidor exige um projeto Supabase com autenticação por e-mail habilitada e um PostgreSQL acessível pelo Session pooler. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY` (chave publishable ou anon) e `DATABASE_URL` nas variáveis do servidor; localmente, elas também podem ser definidas em `.data/supabase.env`, arquivo ignorado pelo Git. Nunca publique a URL do banco com a senha. Não inclua parâmetros SSL na URL: o servidor usa o certificado público `supabase-ca.crt` para verificar a conexão; se necessário, indique outro certificado com `SUPABASE_CA_FILE`. Na primeira inicialização, cria o esquema privado `blefe` e suas tabelas. Configure no Supabase Authentication a URL pública do jogo e as URLs de redirecionamento para que o e-mail de confirmação retorne ao site correto. No Render, configure as mesmas variáveis de ambiente no serviço; elas não são incluídas automaticamente na publicação.
 
@@ -37,12 +37,13 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 - No modo online, um jogador joga por turno e todos os demais adivinham simultaneamente.
 - Suas cartas ficam abertas em leque na parte inferior. Passe o mouse para ampliá-las e ver os efeitos em indicadores como nos cards das regras; clique para jogar. Ao adivinhar, a mão se recolhe para o lado. As cartas da IA ficam viradas para baixo no topo.
 - A carta jogada fica virada para baixo no centro até o palpite e é revelada no mesmo lugar, sobre a pilha crescente de cartas já reveladas.
-- Vida, escudo e sorte dos jogadores e a rodada atual ficam acima da mesa. A barra de escudo fica cheia a partir de 5, mas o número mostra o total real, que não tem limite. O cronômetro e as habilidades ficam dentro da mesa, enquanto o monte extra e os palpites ocupam a região central, deixando as laterais livres.
-- As opções de palpite formam um leque de cartas. Ao lado da mesa, o chat exibe eventos do sistema e resultados das cartas em cards; no modo offline, funciona como log sem envio de mensagens.
+- Vida (vermelho), escudo (azul) e sorte (amarelo) ficam em uma roda segmentada ao redor do avatar de cada jogador; cada atributo tem limite de 5. O cronômetro e a rodada ficam em lados opostos da mesa, e o ícone de sorte aparece próximo à mão durante o palpite.
+- As cartas da mão e as escolhas do Coringa podem ser identificadas e acionadas por teclado ou leitor de tela.
+- As opções de palpite formam um leque de cartas. Ao lado da mesa, o chat exibe eventos do sistema, da conexão e resultados das cartas em cards; no modo offline, funciona como log sem envio de mensagens.
 - O canvas usa a densidade de pixels do aparelho para manter os gráficos nítidos. A mesa se adapta a telas menores e pode ser jogada em celulares.
 - Cada partida sorteia uma das três mesas: verde, azul ou vinho. No online, os dois jogadores veem a mesma mesa.
 - As jogadas emitem o mesmo som, sem revelar a identidade da carta antes do palpite; o áudio pode ser desligado. Ganhos e perdas de vida, sorte e escudos são destacados junto aos indicadores dos jogadores.
-- No online, a mão adversária permanece no topo, inclusive durante a seleção de cartas do Coringa. Em telas pequenas, a mesa ocupa a largura disponível e a página pode ser rolada.
+- No online, a mão adversária permanece no topo, inclusive durante a seleção de cartas do Coringa. Em telas pequenas, a mesa se ajusta à altura disponível; a página pode ser rolada quando necessário.
 - Na distribuição inicial, cada jogador pode receber no máximo 3 cartas do mesmo animal. Troca e Coringa são únicas no baralho.
 - Cartas bônus são compradas apenas do monte restante das 42 cartas. Quando ele acaba, não surgem cartas novas.
 - Cartas jogadas não voltam à mão.
@@ -67,7 +68,7 @@ Quando o servidor está disponível, essas observações são compartilhadas ent
 
 ## Modo online e implantação
 
-O servidor Node.js também oferece `GET /health`, salas públicas de 2 jogadores e um jogo autoritativo por WebSocket. Cada cliente recebe apenas a própria mão; o adversário vê somente a contagem de cartas.
+O servidor Node.js também oferece `GET /health`, mesas competitivas e salas casuais de 2 jogadores e um jogo autoritativo por WebSocket. Cada cliente recebe apenas a própria mão; o adversário vê somente a contagem de cartas.
 
 Para publicar o modo online no Render, use o Blueprint definido em `render.yaml` (serviço Docker). O Render define a variável `PORT` automaticamente. A publicação estática no Netlify continua possível para o modo offline, mas não inclui o matchmaking online sem um servidor de sinalização.
 

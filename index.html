@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173d35">
-  <meta name="application-version" content="1.3.0">
+  <meta name="application-version" content="1.3.1">
   <title>Blefe de Mesa — Cartas & Estratégia</title>
-  <link rel="stylesheet" href="style.css?v=1.3.0">
+  <link rel="stylesheet" href="style.css?v=1.3.1">
 </head>
 <body>
   <main class="app">
@@ -23,69 +23,86 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="text-button" id="sound-toggle" type="button" aria-pressed="true">♫ Som ligado</button>
-        <button class="text-button" id="connection-log-button" type="button" hidden>Conexão: offline</button>
-        <button class="text-button" id="leave-game-button" type="button" hidden>Menu</button>
-        <button class="text-button" id="rules-button" type="button">Como jogar</button>
+        <button class="utility-icon" id="sound-toggle" type="button" aria-pressed="true" aria-label="Desligar som" title="Desligar som">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path class="sound-waves" d="M16 9a4 4 0 0 1 0 6m2-9a8 8 0 0 1 0 12"/><path class="sound-muted" d="m17 10 4 4m0-4-4 4"/></svg>
+        </button>
+        <button class="utility-icon" id="leave-game-button" type="button" aria-label="Voltar ao menu" title="Voltar ao menu" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17 5 12l5-5M5 12h10M14 4h5v16h-5"/></svg>
+        </button>
+        <button class="utility-icon" id="rules-button" type="button" aria-label="Como jogar" title="Como jogar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 1 1 3.9 1.7c-1 .9-1.7 1.1-1.7 2.8m0 3h.01"/></svg>
+        </button>
       </div>
     </header>
 
     <section class="main-menu" id="main-menu" aria-labelledby="menu-title">
       <div class="menu-card">
+        <div class="menu-emblem" aria-hidden="true"><span>♣</span><span>♠</span><span>♦</span></div>
         <p class="eyebrow">CARTAS · ESTRATÉGIA · BLEFE</p>
         <h1 id="menu-title">A mesa está pronta.</h1>
-        <p>Escolha como quer jogar.</p>
+        <p>Escolha seu lugar e prepare o melhor blefe.</p>
         <div class="menu-actions">
-          <button class="primary-button menu-button" id="offline-button" type="button">Jogar offline <span>vs. Lore</span></button>
-          <button class="secondary-button menu-button" id="online-button" type="button">Jogar online <span id="online-player-count" aria-live="polite">Carregando...</span></button>
-          <button class="secondary-button menu-button" id="rank-button" type="button">Rank global</button>
-          <button class="secondary-button menu-button" id="ranked-lore-button" type="button">Partida ranqueada <span>vs. Lore</span></button>
-          <button class="text-button menu-rules-button" id="menu-rules-button" type="button">Como jogar</button>
+          <button class="primary-button menu-button" id="offline-button" type="button">Offline</button>
+          <button class="secondary-button menu-button" id="online-button" type="button">Online</button>
         </div>
+        <div class="menu-extras" aria-label="Opções ranqueadas">
+          <button class="secondary-button menu-button" id="rank-button" type="button">Rank global</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="waiting-room" id="waiting-room" aria-label="Mesa de espera" hidden>
+      <div class="waiting-table">
+        <p class="eyebrow">MESA ONLINE</p>
+        <h1 id="waiting-room-name"></h1>
+        <div class="waiting-players">
+          <div class="waiting-player">
+            <span class="waiting-avatar" id="waiting-own-avatar" aria-hidden="true"></span>
+            <strong id="waiting-own-name"></strong>
+            <span>Você</span>
+          </div>
+          <span class="waiting-versus" aria-hidden="true">✦</span>
+          <div class="waiting-player">
+            <span class="waiting-avatar is-loading" id="waiting-peer-avatar" aria-hidden="true"></span>
+            <strong id="waiting-peer-name">Aguardando adversário</strong>
+            <span id="waiting-peer-status">Procurando jogador</span>
+          </div>
+        </div>
+        <p class="waiting-status" id="waiting-status" role="status" aria-live="polite"></p>
+        <button class="secondary-button" id="cancel-match-button" type="button">Sair da sala</button>
       </div>
     </section>
 
     <section class="game-shell" id="game-shell" aria-label="Jogo de cartas" hidden>
       <header class="match-header" aria-label="Informações da partida">
-        <section class="player-hud" id="own-hud" aria-label="Seus atributos" hidden>
-          <div class="player-hud-heading"><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
-          <div class="player-hud-stats">
-            <div class="hud-resource">
-              <div class="hud-resource-label"><span>Vida</span><span><strong data-stat="hp"></strong>/5</span></div>
-              <div class="hud-bar health-bar" aria-hidden="true"><span data-bar="hp"></span></div>
-            </div>
-            <div class="hud-resource" title="A barra fica cheia a partir de 5 escudos; não há limite de escudos.">
-              <div class="hud-resource-label"><span>Escudo</span><strong data-stat="shields"></strong></div>
-              <div class="hud-bar shield-bar" aria-hidden="true"><span data-bar="shields"></span></div>
-            </div>
-            <span class="hud-luck">✦ Sorte <strong data-stat="luck"></strong></span>
-          </div>
+        <section class="player-hud" id="own-hud" role="img" aria-label="Seus atributos" hidden>
+          <svg class="hud-wheel" viewBox="0 0 100 100" aria-hidden="true">
+            <g class="hud-hp" transform="rotate(-90 50 50)"><circle class="hud-track" cx="50" cy="50" r="42" pathLength="300"/><circle class="hud-value" data-stat="hp" cx="50" cy="50" r="42" pathLength="300"/></g>
+            <g class="hud-shields" transform="rotate(30 50 50)"><circle class="hud-track" cx="50" cy="50" r="42" pathLength="300"/><circle class="hud-value" data-stat="shields" cx="50" cy="50" r="42" pathLength="300"/></g>
+            <g class="hud-luck" transform="rotate(150 50 50)"><circle class="hud-track" cx="50" cy="50" r="42" pathLength="300"/><circle class="hud-value" data-stat="luck" cx="50" cy="50" r="42" pathLength="300"/></g>
+          </svg>
+          <span class="hud-avatar" aria-hidden="true"></span>
         </section>
-        <div class="round-indicator" id="round-indicator" aria-label="Rodada atual">
-          <span id="round-label">Abertura</span>
-          <strong id="round-value">1</strong>
-        </div>
-        <section class="player-hud opponent-hud" id="opponent-hud" aria-label="Atributos do adversário" hidden>
-          <div class="player-hud-heading"><strong class="player-hud-name"></strong><span class="player-hud-turn" hidden>Joga</span></div>
-          <div class="player-hud-stats">
-            <div class="hud-resource">
-              <div class="hud-resource-label"><span>Vida</span><span><strong data-stat="hp"></strong>/5</span></div>
-              <div class="hud-bar health-bar" aria-hidden="true"><span data-bar="hp"></span></div>
-            </div>
-            <div class="hud-resource" title="A barra fica cheia a partir de 5 escudos; não há limite de escudos.">
-              <div class="hud-resource-label"><span>Escudo</span><strong data-stat="shields"></strong></div>
-              <div class="hud-bar shield-bar" aria-hidden="true"><span data-bar="shields"></span></div>
-            </div>
-            <span class="hud-luck">✦ Sorte <strong data-stat="luck"></strong></span>
-          </div>
+        <section class="player-hud opponent-hud" id="opponent-hud" role="img" aria-label="Atributos do adversário" hidden>
+          <svg class="hud-wheel" viewBox="0 0 100 100" aria-hidden="true">
+            <g class="hud-hp" transform="rotate(-90 50 50)"><circle class="hud-track" cx="50" cy="50" r="42" pathLength="300"/><circle class="hud-value" data-stat="hp" cx="50" cy="50" r="42" pathLength="300"/></g>
+            <g class="hud-shields" transform="rotate(30 50 50)"><circle class="hud-track" cx="50" cy="50" r="42" pathLength="300"/><circle class="hud-value" data-stat="shields" cx="50" cy="50" r="42" pathLength="300"/></g>
+            <g class="hud-luck" transform="rotate(150 50 50)"><circle class="hud-track" cx="50" cy="50" r="42" pathLength="300"/><circle class="hud-value" data-stat="luck" cx="50" cy="50" r="42" pathLength="300"/></g>
+          </svg>
+          <span class="hud-avatar" aria-hidden="true"></span>
         </section>
       </header>
       <div class="game-workspace">
         <div class="table-wrap">
           <canvas id="game-canvas" width="1100" height="660" tabindex="0" aria-label="Mesa do duelo: passe o mouse para ver o efeito e clique para jogar"></canvas>
+          <div class="accessible-cards sr-only" id="accessible-cards" aria-label="Cartas da partida"></div>
+          <div class="round-indicator" id="round-indicator" aria-label="Rodada atual">
+            <span id="round-label">Abertura</span>
+            <strong id="round-value">1</strong>
+          </div>
           <div class="turn-tools">
             <div class="timer" id="timer" aria-label="Tempo restante" hidden>
-              <span class="timer-icon" aria-hidden="true">◷</span>
+              <svg class="timer-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>
               <strong id="timer-value">40</strong><span>s</span>
             </div>
             <div class="round-countdown" id="round-countdown" role="status" aria-live="polite" hidden>
@@ -93,9 +110,11 @@
               <strong id="round-countdown-value">4</strong>
               <span>s</span>
             </div>
-            <button class="turn-tool-button hint-button" id="use-luck-button" type="button" hidden>✦ Usar sorte</button>
-            <button class="turn-tool-button swap-hands-button" id="swap-hands-button" type="button" hidden>🔄 Trocar mãos</button>
+            <button class="turn-tool-button swap-hands-button" id="swap-hands-button" type="button" hidden>↔ Trocar mãos</button>
           </div>
+          <button class="hint-button" id="use-luck-button" type="button" aria-label="Usar sorte" title="Usar sorte" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c.8 5 2.2 7.2 7 9-4.8 1.8-6.2 4-7 9-.8-5-2.2-7.2-7-9 4.8-1.8 6.2-4 7-9Z"/></svg>
+          </button>
           <div class="action-area" id="action-area" role="group" aria-label="Opções de palpite" hidden></div>
           <div class="table-overlay" id="table-overlay" hidden>
             <div class="table-feedback">
@@ -138,6 +157,8 @@
     </div>
     <div class="rules-content">
       <p>Você e o adversário começam com <strong>5 vidas e 7 cartas</strong>. O jogo usa um baralho de <strong>42 cartas</strong>: 5 de cada animal e 1 de cada especial. No sorteio inicial, ninguém recebe mais de 3 cartas do mesmo animal. Em cada turno, uma pessoa joga uma carta e a outra tenta adivinhar o animal.</p>
+      <p>Na roda ao redor de cada jogador, <strong>vermelho indica vida</strong>, <strong>azul indica escudo</strong> e <strong>amarelo indica sorte</strong>. Cada barrinha preenchida vale um ponto, até cinco por atributo.</p>
+      <p>Com teclado ou leitor de tela, navegue até suas cartas para ouvir seus nomes e efeitos e selecione uma quando for sua vez.</p>
       <h3>Cartas de ataque</h3>
       <div class="rules-card-grid">
         <article class="rules-card" style="--card-accent:#e9a16f">
@@ -272,7 +293,7 @@
         <span class="rules-chip is-action">Máximo inicial: 3 por animal</span>
         <span class="rules-chip is-action">Sorte elimina três opções</span>
         <span class="rules-chip is-action">Escudos bloqueiam dano</span>
-        <span class="rules-chip is-action">Máximo de 5 vidas</span>
+        <span class="rules-chip is-action">Máximo de 5 de cada atributo</span>
       </div>
       <p>As cartas compradas permanecem na mão. As jogadas e os avisos do sistema aparecem no chat após o resultado da rodada.</p>
       <p class="rules-note">Cartas jogadas saem da mão. Vence quem eliminar o adversário ou ficar sem cartas. A IA decide suas jogadas no modo offline.</p>
@@ -285,25 +306,38 @@
         <p class="eyebrow">DUELAS ONLINE · 1 CONTRA 1</p>
         <h2 id="online-title">Salas online</h2>
       </div>
-      <button class="icon-button" id="close-online" type="button" aria-label="Fechar">×</button>
+      <div class="dialog-actions">
+        <button class="utility-icon" id="refresh-rooms-button" type="button" aria-label="Atualizar salas" title="Atualizar salas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.5-2"/></svg></button>
+        <button class="utility-icon" id="open-create-room" type="button" aria-label="Criar sala" title="Criar sala"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button class="icon-button" id="close-online" type="button" aria-label="Fechar">×</button>
+      </div>
     </div>
-    <p class="online-description">Crie uma mesa ou escolha um adversário na lista. Cada sala comporta exatamente dois jogadores.</p>
-    <form id="online-form" class="online-form">
+    <div class="online-identity online-form">
       <label for="nickname-input">Seu nickname</label>
       <input id="nickname-input" name="nickname" type="text" minlength="2" maxlength="18" autocomplete="nickname" placeholder="Ex.: Matheus" required>
-      <label for="room-name-input">Nome da nova sala</label>
-      <input id="room-name-input" name="roomName" type="text" minlength="2" maxlength="32" placeholder="Ex.: Mesa de domingo">
-      <label class="ranked-option"><input id="ranked-room-input" type="checkbox"> Sala ranqueada (exige conta)</label>
-      <button class="primary-button" id="find-match-button" type="submit">Criar mesa</button>
-      <button class="secondary-button" id="refresh-rooms-button" type="button">Atualizar salas</button>
-      <button class="primary-button" id="start-room-button" type="button" hidden>Iniciar partida</button>
-      <button class="secondary-button" id="cancel-match-button" type="button" hidden>Cancelar busca</button>
-    </form>
+    </div>
     <section class="room-list-section" aria-labelledby="room-list-title">
-      <h3 id="room-list-title">Salas disponíveis</h3>
+      <div class="room-list-heading">
+        <h3 id="room-list-title">Salas disponíveis</h3>
+        <span class="online-count" id="online-player-count" aria-live="polite">Conectando...</span>
+      </div>
       <div class="room-list" id="room-list"></div>
     </section>
     <p class="online-status" id="online-status" role="status" aria-live="polite">Conecte-se para listar as salas.</p>
+    <button class="secondary-button" id="offline-unranked-button" type="button" hidden>Jogar offline sem ranking</button>
+  </dialog>
+
+  <dialog id="create-room-dialog" aria-labelledby="create-room-title">
+    <div class="dialog-head">
+      <div><p class="eyebrow">NOVA MESA</p><h2 id="create-room-title">Criar sala</h2></div>
+      <button class="icon-button" id="close-create-room" type="button" aria-label="Fechar">×</button>
+    </div>
+    <form id="online-form" class="online-form">
+      <label for="room-name-input">Nome da sala</label>
+      <input id="room-name-input" name="roomName" type="text" minlength="2" maxlength="32" placeholder="Ex.: Mesa de domingo" required>
+      <button class="primary-button" id="find-match-button" type="submit">Criar sala</button>
+    </form>
+    <p class="online-status" id="create-room-status" role="status" aria-live="polite"></p>
   </dialog>
 
   <dialog id="rank-dialog" aria-labelledby="rank-title">
@@ -311,7 +345,7 @@
       <div><p class="eyebrow">MELHORES JOGADORES</p><h2 id="rank-title">Rank global</h2></div>
       <button class="icon-button" id="close-rank" type="button" aria-label="Fechar ranking">×</button>
     </div>
-    <p class="online-description">Vitórias em partidas ranqueadas. Partidas offline não contam.</p>
+    <p class="online-description">Vitórias nas mesas competitivas e no offline validado com conta.</p>
     <ol class="ranking-list" id="ranking-list"></ol>
     <p class="online-status" id="ranking-status" role="status" aria-live="polite"></p>
     <button class="secondary-button" id="account-button" type="button">Entrar ou criar conta</button>
@@ -336,21 +370,10 @@
     <p class="online-status" id="account-status" role="status" aria-live="polite"></p>
   </dialog>
 
-  <dialog id="connection-dialog" aria-labelledby="connection-title">
-    <div class="dialog-head">
-      <div>
-        <p class="eyebrow">EVENTOS DE REDE</p>
-        <h2 id="connection-title">Log da conexão</h2>
-      </div>
-      <button class="icon-button" id="close-connection-log" type="button" aria-label="Fechar log">×</button>
-    </div>
-    <ol class="connection-log" id="connection-log" aria-live="polite"></ol>
-  </dialog>
-
-  <script src="ranking-client.js?v=1.3.0"></script>
-  <script src="online.js?v=1.3.0"></script>
-  <script src="ai-policy.js?v=1.3.0"></script>
-  <script src="game.js?v=1.3.0"></script>
-  <script src="version-check.js?v=1.3.0"></script>
+  <script src="ranking-client.js?v=1.3.1"></script>
+  <script src="online.js?v=1.3.1"></script>
+  <script src="ai-policy.js?v=1.3.1"></script>
+  <script src="game.js?v=1.3.1"></script>
+  <script src="version-check.js?v=1.3.1"></script>
 </body>
 </html>

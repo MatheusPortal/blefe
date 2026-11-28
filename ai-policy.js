@@ -80,27 +80,28 @@
       g.hp = Math.max(0, g.hp - (amount - blocked));
     };
     const luck = (player, amount) => { player.luck = Math.min(5, player.luck + amount); };
+    const shield = (player, amount) => { player.shields = Math.min(5, player.shields + amount); };
     let swapValue = 0;
     if (correct) {
       if (type === "tigre" || type === "tartaruga") {
         if (g.hp < 5) g.hp += 1;
-        else g.shields += 1;
+        else shield(g, 1);
       } else if (type === "peixe") g.hp = Math.min(5, g.hp + 1);
       else if (["macaco", "vaca", "coelho"].includes(type)) luck(g, 1);
-      else if (type === "elefante") g.shields += 1;
+      else if (type === "elefante") shield(g, 1);
     } else {
       switch (type) {
         case "leao": damage(2); draw(1); luck(o, 1); break;
         case "coelho": draw(3); luck(o, 2); break;
-        case "vaca": draw(2); o.shields += 2; break;
+        case "vaca": draw(2); shield(o, 2); break;
         case "peixe": draw(2); g.shields = Math.max(0, g.shields - 3); luck(o, 1); o.hp = Math.min(5, o.hp + 1); break;
         case "tigre": damage(1); draw(2); break;
-        case "macaco": damage(3); draw(1); o.shields += 2; break;
+        case "macaco": damage(3); draw(1); shield(o, 2); break;
         case "elefante": g.hp = Math.max(0, g.hp - 1); g.shields = Math.max(0, g.shields - 2); break;
-        case "tartaruga": draw(1); g.shields = Math.max(0, g.shields - 1); o.shields += 1; break;
+        case "tartaruga": draw(1); g.shields = Math.max(0, g.shields - 1); shield(o, 1); break;
         case "coringa":
           o.hp = Math.min(5, o.hp + 1);
-          o.shields += 1;
+          shield(o, 1);
           if (g.cards > 0 && o.cards > 0 && g.hp > 0) swapValue = 0.5;
           break;
         case "troca":

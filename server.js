@@ -13,6 +13,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(root, ".data", "supabase.env"), quiet: true });
 const port = Number(process.env.PORT || 10000);
 const rooms = new Map();
+let nextCompetitiveRoom = 1;
 const peers = new Map();
 const socketPeers = new WeakMap();
 const cardTypes = globalThis.BlefeAI.types;
@@ -118,8 +119,30 @@ function roomSummary(room) {
     playerCount: room.players.size,
     maxPlayers: 2,
     status: room.status,
-    ranked: Boolean(room.ranked)
+    ranked: Boolean(room.ranked),
+    competitive: Boolean(room.competitive),
+    startsAt: room.startsAt || null,
+    serverTime: Date.now()
   };
+}
+
+function maintainCompetitiveRooms() {
+  const available = [...rooms.values()].filter((room) => room.competitive && room.status === "lobby" && room.players.size < 2);
+  while (available.length > 3) {
+    const emptyIndex = available.findIndex((room) => room.players.size === 0);
+    if (emptyIndex < 0) break;
+    const [room] = available.splice(emptyIndex, 1);
+    rooms.delete(room.id);
+  }
+  while (available.length < 3) {
+    const room = {
+      id: randomUUID(), name: `Mesa competitiva ${nextCompetitiveRoom++}`, hostId: null,
+      players: new Map(), status: "lobby", createdAt: Date.now(), game: null, timer: null,
+      ranked: true, competitive: true
+    };
+    rooms.set(room.id, room);
+    available.push(room);
+  }
 }
 
 function lobbyPlayer(peer) {
@@ -127,6 +150,7 @@ function lobbyPlayer(peer) {
 }
 
 function broadcastRooms() {
+  maintainCompetitiveRooms();
   const list = [...rooms.values()]
     .filter((room) => room.status === "lobby" && room.players.size < 2)
     .map(roomSummary);
@@ -149,7 +173,24 @@ function relayLobby(room) {
   });
 }
 
-function finishRoom(room, winner) {
+function scheduleLobbyStart(room) {
+  if (room.lobbyStartTimer || room.status !== "lobby" || room.players.size !== 2) return;
+  room.startsAt = Date.now() + 5000;
+  room.lobbyStartTimer = setTimeout(() => {
+    room.lobbyStartTimer = null;
+    room.startsAt = null;
+    if (room.status !== "lobby" || room.players.size !== 2 || !rooms.has(room.id)) return;
+    try {
+      startRoomGame(room);
+    } catch (error) {
+      logEvent("room-start-error", { roomId: room.id, message: error.message });
+      broadcastRoom(room, { type: "error", message: "Não foi possível iniciar a partida. Tente novamente." });
+      relayLobby(room);
+    }
+  }, 5000);
+}
+
+function finishRoom(room, winner, departure = null) {
   if (room.timer) clearTimeout(room.timer);
   if (room.game) clearDeadlineTimer(room.game);
   room.timer = null;
@@ -167,7 +208,8 @@ function finishRoom(room, winner) {
   broadcastRoom(room, {
     type: "game-over",
     winner: winner ? lobbyPlayer(winner) : null,
-    roomId: room.id
+    roomId: room.id,
+    departure
   });
   broadcastGame(room, "finished");
   logEvent("game-finished", { roomId: room.id, matchId: room.game?.matchId || null, winnerId: winner?.publicId || null });
@@ -187,7 +229,10 @@ function detachPeer(room, peer, reason) {
     room.hostId = nextHost?.publicId || null;
   }
   if (room.status === "lobby") {
-    if (room.players.size === 0) rooms.delete(room.id);
+    if (room.lobbyStartTimer) clearTimeout(room.lobbyStartTimer);
+    room.lobbyStartTimer = null;
+    room.startsAt = null;
+    if (room.players.size === 0 && !room.competitive) rooms.delete(room.id);
     else relayLobby(room);
     broadcastRooms();
     return;
@@ -209,7 +254,9 @@ function detachPeer(room, peer, reason) {
     if (room.game) clearDeadlineTimer(room.game);
     rooms.delete(room.id);
   } else {
-    checkEliminationsAndWinner(room);
+    checkEliminationsAndWinner(room, room.status === "playing"
+      ? { player: lobbyPlayer(peer), reason }
+      : null);
     if (room.status !== "finished") advanceIfNeeded(room);
     logEvent("room-player-left", { roomId: room.id, playerId: peer.publicId, reason });
   }
@@ -465,6 +512,12 @@ function gainLuck(player, amount) {
   return gained;
 }
 
+function gainShield(player, amount) {
+  const gained = Math.min(amount, 5 - player.shields);
+  player.shields += gained;
+  return gained;
+}
+
 function resolveEffect(game, type, owner, guesser, correct) {
   const result = { guesserId: guesser.id, correct, hp: 0, shields: 0, cards: [], ownerHp: 0, ownerShields: 0, ownerLuck: 0 };
   if (correct) {
@@ -473,8 +526,7 @@ function resolveEffect(game, type, owner, guesser, correct) {
         guesser.hp += 1;
         result.hp = 1;
       } else {
-        guesser.shields += 1;
-        result.shields = 1;
+        result.shields = gainShield(guesser, 1);
       }
     } else if (type === "peixe" && guesser.hp < 5) {
       guesser.hp += 1;
@@ -482,8 +534,7 @@ function resolveEffect(game, type, owner, guesser, correct) {
     } else if (["macaco", "vaca", "coelho"].includes(type)) {
       result.luck = gainLuck(guesser, 1);
     } else if (type === "elefante") {
-      guesser.shields += 1;
-      result.shields = 1;
+      result.shields = gainShield(guesser, 1);
     }
     return result;
   }
@@ -496,8 +547,7 @@ function resolveEffect(game, type, owner, guesser, correct) {
     result.ownerLuck = gainLuck(owner, 2);
   } else if (type === "vaca") {
     result.cards = drawCards(game, guesser, 2);
-    owner.shields += 2;
-    result.ownerShields = 2;
+    result.ownerShields = gainShield(owner, 2);
   } else if (type === "peixe") {
     result.cards = drawCards(game, guesser, 2);
     const lost = Math.min(3, guesser.shields);
@@ -511,8 +561,7 @@ function resolveEffect(game, type, owner, guesser, correct) {
     Object.assign(result, damage(guesser, 1), { cards: drawCards(game, guesser, 2) });
   } else if (type === "macaco") {
     Object.assign(result, damage(guesser, 3), { cards: drawCards(game, guesser, 1) });
-    owner.shields += 2;
-    result.ownerShields = 2;
+    result.ownerShields = gainShield(owner, 2);
   } else if (type === "elefante") {
     const hpLost = Math.min(1, guesser.hp);
     const shieldsLost = Math.min(2, guesser.shields);
@@ -525,16 +574,14 @@ function resolveEffect(game, type, owner, guesser, correct) {
     const lost = Math.min(1, guesser.shields);
     guesser.shields -= lost;
     result.shieldsLost = lost;
-    owner.shields += 1;
-    result.ownerShields = 1;
+    result.ownerShields = gainShield(owner, 1);
   } else if (type === "troca") {
     game.swapOwnerId = owner.id;
   } else if (type === "coringa") {
     const healed = Math.min(1, 5 - owner.hp);
     owner.hp += healed;
-    owner.shields += 1;
+    result.ownerShields = gainShield(owner, 1);
     result.ownerHp = healed;
-    result.ownerShields = 1;
     if (guesser.hand.length > 0 && owner.hand.length > 0) {
       result.jokerPending = true;
       game.jokerSelection = {
@@ -559,7 +606,7 @@ function nextAliveId(game, afterId) {
   return null;
 }
 
-function checkEliminationsAndWinner(room) {
+function checkEliminationsAndWinner(room, departure = null) {
   const game = room.game;
   if (!game || game.winnerId) return;
   for (const player of game.players.values()) {
@@ -567,7 +614,7 @@ function checkEliminationsAndWinner(room) {
   }
   const alive = [...game.players.values()].filter((player) => player.alive);
   if (alive.length <= 1) {
-    finishRoom(room, alive[0]?.peer || null);
+    finishRoom(room, alive[0]?.peer || null, departure);
     return;
   }
   const owner = game.players.get(game.turnPlayerId);
@@ -963,7 +1010,7 @@ async function handleMessage(peer, message) {
   if (message.type === "list-rooms") {
     if (!peer.room) send(peer.socket, {
       type: "room-list",
-      rooms: [...rooms.values()].filter((room) => room.status === "lobby").map(roomSummary)
+      rooms: [...rooms.values()].filter((room) => room.status === "lobby" && room.players.size < 2).map(roomSummary)
     });
     return;
   }
@@ -1016,7 +1063,9 @@ async function handleMessage(peer, message) {
     peer.nickname = nickname;
     peer.accountId = account?.id || null;
     peer.room = room;
+    if (!room.hostId) room.hostId = peer.publicId;
     room.players.set(peer.publicId, peer);
+    scheduleLobbyStart(room);
     send(peer.socket, { type: "room-joined", publicId: peer.publicId, room: { ...roomSummary(room), players: [...room.players.values()].map(lobbyPlayer) } });
     relayLobby(room);
     broadcastRooms();
@@ -1045,11 +1094,7 @@ async function handleMessage(peer, message) {
   }
 
   if (message.type === "start-room") {
-    const room = peer.room;
-    if (!room || room.status !== "lobby") throw new Error("Sala inválida para iniciar.");
-    if (room.hostId !== peer.publicId) throw new Error("Somente o host pode iniciar a partida.");
-    if (room.players.size !== 2) throw new Error("São necessários exatamente 2 jogadores.");
-    startRoomGame(room);
+    throw new Error("A partida começa automaticamente quando a sala estiver completa.");
     return;
   }
 
@@ -1057,7 +1102,7 @@ async function handleMessage(peer, message) {
     const room = peer.room;
     detachPeer(room, peer, "player-left");
     send(peer.socket, { type: "room-left" });
-    send(peer.socket, { type: "room-list", rooms: [...rooms.values()].filter((candidate) => candidate.status === "lobby").map(roomSummary) });
+    send(peer.socket, { type: "room-list", rooms: [...rooms.values()].filter((candidate) => candidate.status === "lobby" && candidate.players.size < 2).map(roomSummary) });
     return;
   }
 
@@ -1275,6 +1320,7 @@ const heartbeat = setInterval(() => {
 }, 25_000);
 
 server.on("close", () => clearInterval(heartbeat));
+maintainCompetitiveRooms();
 await loadLearningModel();
 try {
   ranking = await createRanking({

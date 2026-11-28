@@ -10,6 +10,27 @@ const roundCode = source.slice(source.indexOf("  function updateRoundIndicator("
 const hudCode = source.slice(source.indexOf("  function updatePlayerHud("), source.indexOf("  function renderRoom("));
 const tableLayoutCode = source.slice(source.indexOf("  function getTableLayout("), source.indexOf("  function drawRoomTable("));
 const visualEffectCode = source.slice(source.indexOf("  function drawVisualEffect("), source.indexOf("  function drawExtraDeck("));
+const accessibleCardsCode = source.slice(source.indexOf("  function renderAccessibleCards("), source.indexOf("  function renderActions("));
+
+test("ícone de som alterna estado e nome acessível", () => {
+  const code = source.slice(source.indexOf('  soundToggle.addEventListener("click"'), source.indexOf('  window.addEventListener("pointerdown"'));
+  const attributes = {};
+  const soundToggle = {
+    addEventListener(_type, handler) { this.click = handler; },
+    setAttribute(name, value) { attributes[name] = value; }
+  };
+  vm.runInNewContext(`let soundEnabled = true; let audioOutput = null;\n${code}`, {
+    soundToggle, prepareAudio() {}, startBackgroundMusic() {}, stopBackgroundMusic() {}
+  });
+  soundToggle.click();
+  assert.equal(attributes["aria-pressed"], "false");
+  assert.equal(attributes["aria-label"], "Ligar som");
+  assert.equal(soundToggle.title, "Ligar som");
+  soundToggle.click();
+  assert.equal(attributes["aria-pressed"], "true");
+  assert.equal(attributes["aria-label"], "Desligar som");
+  assert.equal(soundToggle.title, "Desligar som");
+});
 
 test("carta jogada permanece no centro ao ser revelada, sobre a pilha", () => {
   for (const mobile of [false, true]) {
@@ -94,29 +115,99 @@ test("monte extra e palpites preservam as laterais e não ficam sob os dados", (
   }
 });
 
-test("HUD atualiza vida, escudo sem limite e sorte", () => {
-  const elements = Object.fromEntries([".player-hud-name", ".player-hud-turn", ...["hp", "shields", "luck"].map((stat) => `[data-stat="${stat}"]`), ...["hp", "shields"].map((stat) => `[data-bar="${stat}"]`)]
-    .map((selector) => [selector, { textContent: "", style: {} }]));
-  const hud = { querySelector: (selector) => elements[selector] };
-  const update = vm.runInNewContext(`${hudCode}\nupdatePlayerHud`, {
-    window: { matchMedia: () => ({ matches: true }) }
-  });
+test("HUD mostra cinco segmentos por atributo e descreve os valores para leitores de tela", () => {
+  const elements = Object.fromEntries([".hud-avatar", ...["hp", "shields", "luck"].map((stat) => `[data-stat="${stat}"]`)]
+    .map((selector) => [selector, { textContent: "", setAttribute(_name, value) { this.dashes = value; } }]));
+  const hud = {
+    querySelector: (selector) => elements[selector],
+    classList: { toggle(_name, active) { hud.active = active; } },
+    setAttribute(_name, value) { this.label = value; }
+  };
+  const update = vm.runInNewContext(`${hudCode}\nupdatePlayerHud`);
   update(hud, { nickname: "Bia", hp: 4, shields: 2, luck: 1 }, true);
   assert.equal(hud.hidden, false);
-  assert.equal(elements[".player-hud-name"].textContent, "Bia");
-  assert.equal(elements[".player-hud-turn"].hidden, false);
-  assert.equal(elements['[data-bar="hp"]'].style.width, "80%");
-  assert.equal(elements['[data-bar="shields"]'].style.width, "40%");
-  update(hud, { name: "Nina", hp: 2, shields: 8, luck: 3 }, false);
-  assert.equal(elements[".player-hud-name"].textContent, "Nina");
-  assert.equal(elements['[data-stat="hp"]'].textContent, "2");
-  assert.equal(elements['[data-stat="shields"]'].textContent, "8");
-  assert.equal(elements['[data-stat="luck"]'].textContent, "3");
-  assert.equal(elements['[data-bar="hp"]'].style.width, "40%");
-  assert.equal(elements['[data-bar="shields"]'].style.width, "100%");
-  assert.equal(elements[".player-hud-turn"].hidden, true);
+  assert.equal(elements[".hud-avatar"].textContent, "B");
+  assert.equal(hud.active, true);
+  assert.match(hud.label, /Bia: vida 4 de 5, escudo 2 de 5, sorte 1 de 5/);
+  for (const [stat, expected] of [["hp", 4], ["shields", 2], ["luck", 1]]) {
+    assert.equal(elements[`[data-stat="${stat}"]`].dashes.split("16 4").length - 1, expected);
+  }
+  update(hud, { name: "Nina", hp: 0, shields: 5, luck: 3 }, false);
+  assert.equal(elements[".hud-avatar"].textContent, "N");
+  assert.equal(elements['[data-stat="hp"]'].dashes.split("16 4").length - 1, 0);
+  assert.equal(elements['[data-stat="shields"]'].dashes.split("16 4").length - 1, 5);
+  assert.equal(hud.active, false);
   update(hud, null, false);
   assert.equal(hud.hidden, true);
+});
+
+test("cartas acessíveis permitem jogar e completar a escolha do Coringa sem revelar cartas ocultas", () => {
+  class Element {
+    constructor() { this.children = []; this.attributes = {}; }
+    setAttribute(name, value) { this.attributes[name] = value; }
+    append(child) { this.children.push(child); }
+    replaceChildren() { this.children = []; }
+    addEventListener(_type, callback) { this.click = callback; }
+    contains() { return false; }
+  }
+  const accessibleCards = new Element();
+  const state = {
+    phase: "player-play",
+    players: { player: { hand: ["leao", "vaca"] }, ai: { hand: ["peixe", "vaca"] } }
+  };
+  const actions = [];
+  const context = {
+    accessibleCards,
+    document: { activeElement: null, createElement: () => new Element() },
+    canvas: {},
+    state, onlineRole: null, roomState: null, roomSession: null,
+    CARDS: {
+      leao: { name: "Leão", effect: "Efeito do leão" },
+      vaca: { name: "Vaca", effect: "Efeito da vaca" },
+      peixe: { name: "Peixe", effect: "Efeito do peixe" }
+    },
+    playCard: (player, card) => actions.push([player, card]),
+    submitJokerReveal: (index) => actions.push(["joker", index])
+  };
+  const render = vm.runInNewContext(`let accessibleCardsKey = "";\n${accessibleCardsCode}\nrenderAccessibleCards`, context);
+  render();
+  assert.match(accessibleCards.children[0].children[0].attributes["aria-label"], /Leão.*Efeito do leão/);
+  accessibleCards.children[0].children[1].click();
+  assert.deepEqual(actions.pop(), ["player", "vaca"]);
+
+  state.phase = "player-joker-select";
+  state.pendingJokerReveal = { target: "ai", stage: "reveal", selectedIndices: [0], revealedCards: ["peixe"] };
+  render();
+  const opponent = accessibleCards.children[1].children;
+  assert.equal(opponent[0].disabled, true);
+  assert.match(opponent[0].attributes["aria-label"], /Peixe/);
+  assert.match(opponent[1].attributes["aria-label"], /virada/);
+  assert.doesNotMatch(opponent[1].attributes["aria-label"], /Vaca/);
+  opponent[1].click();
+  assert.deepEqual(actions.pop(), ["joker", 1]);
+
+  state.pendingJokerReveal.stage = "swap";
+  render();
+  accessibleCards.children[0].children[0].click();
+  assert.deepEqual(actions.pop(), ["joker", 0]);
+
+  context.onlineRole = "room";
+  context.roomState = {
+    you: "a", turnPlayerId: "a", phase: "play",
+    players: [{ id: "a", hand: ["leao", "vaca"] }, { id: "b", handCount: 2 }]
+  };
+  context.getRoomPlayer = () => context.roomState.players[0];
+  context.playRoomCard = (index) => actions.push(["play", index]);
+  context.roomSession = { sendAction: (action) => actions.push(action) };
+  render();
+  accessibleCards.children[0].children[1].click();
+  assert.deepEqual(actions.pop(), ["play", 1]);
+  context.roomState.phase = "joker-select";
+  context.roomState.jokerSelection = { ownerId: "a", targetId: "b", stage: "select", selectedIndices: [1], cards: ["peixe"] };
+  render();
+  assert.match(accessibleCards.children[1].children[0].attributes["aria-label"], /Peixe/);
+  accessibleCards.children[1].children[0].click();
+  assert.equal(actions.pop().action, "joker-pick");
 });
 
 test("revelação não desenha círculo ou exclamação, mas troca mantém animação", () => {
