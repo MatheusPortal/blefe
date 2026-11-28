@@ -200,6 +200,11 @@ button { font: inherit; }
 }
 
 .online-form input:focus { border-color: var(--lime); }
+.online-form .ranked-option { display: flex; align-items: center; gap: 8px; }
+.online-form .ranked-option input { width: auto; min-height: 0; }
+.ranking-list { display: grid; gap: 8px; max-height: 300px; overflow-y: auto; padding-left: 32px; }
+.ranking-list li { padding: 9px; color: var(--mint); background: rgba(120, 213, 170, .08); border-radius: 6px; }
+.ranking-list li span { float: right; color: var(--muted); }
 .online-form button[hidden] { display: none; }
 .online-status { min-height: 20px; margin: 12px 0 0; }
 

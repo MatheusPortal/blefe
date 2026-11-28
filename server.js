@@ -5,9 +5,12 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
+import dotenv from "dotenv";
+import { createRanking } from "./ranking.js";
 import "./ai-policy.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(root, ".data", "supabase.env"), quiet: true });
 const port = Number(process.env.PORT || 10000);
 const rooms = new Map();
 const peers = new Map();
@@ -17,6 +20,7 @@ const aiLearningFile = process.env.AI_LEARNING_FILE || path.join(root, ".data", 
 const learningWriteOrigin = new Map();
 let saveLearningPromise = Promise.resolve();
 let aiLearning = newLearningModel();
+let ranking = null;
 const staticFiles = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
@@ -24,6 +28,7 @@ const staticFiles = new Map([
   ["/game.js", ["game.js", "text/javascript; charset=utf-8"]],
   ["/ai-policy.js", ["ai-policy.js", "text/javascript; charset=utf-8"]],
   ["/online.js", ["online.js", "text/javascript; charset=utf-8"]],
+  ["/ranking-client.js", ["ranking-client.js", "text/javascript; charset=utf-8"]],
   ["/version-check.js", ["version-check.js", "text/javascript; charset=utf-8"]]
 ]);
 
@@ -112,7 +117,8 @@ function roomSummary(room) {
     hostId: room.hostId,
     playerCount: room.players.size,
     maxPlayers: 2,
-    status: room.status
+    status: room.status,
+    ranked: Boolean(room.ranked)
   };
 }
 
@@ -150,13 +156,21 @@ function finishRoom(room, winner) {
   room.status = "finished";
   room.rematchRequests = new Set();
   if (room.game) room.game.winnerId = winner?.publicId || null;
+  if (room.ranked && winner) {
+    ranking.recordWin(room.game.matchId, winner.isLore ? null : winner.accountId)
+      .then(() => broadcastRoom(room, { type: "ranking-saved" }))
+      .catch((error) => {
+        logEvent("ranking-save-error", { message: error.message, matchId: room.game.matchId });
+        broadcastRoom(room, { type: "ranking-error", message: "Não foi possível registrar a vitória no ranking." });
+      });
+  }
   broadcastRoom(room, {
     type: "game-over",
     winner: winner ? lobbyPlayer(winner) : null,
     roomId: room.id
   });
   broadcastGame(room, "finished");
-  logEvent("game-finished", { roomId: room.id, winnerId: winner?.publicId || null });
+  logEvent("game-finished", { roomId: room.id, matchId: room.game?.matchId || null, winnerId: winner?.publicId || null });
 }
 
 function detachPeer(room, peer, reason) {
@@ -176,6 +190,18 @@ function detachPeer(room, peer, reason) {
     if (room.players.size === 0) rooms.delete(room.id);
     else relayLobby(room);
     broadcastRooms();
+    return;
+  }
+  if (room.ranked && room.lore && peer !== room.lore && room.status === "playing") {
+    finishRoom(room, room.lore);
+    room.players.delete(room.lore.publicId);
+    rooms.delete(room.id);
+    return;
+  }
+  if (room.lore && peer !== room.lore) {
+    if (room.timer) clearTimeout(room.timer);
+    if (room.game) clearDeadlineTimer(room.game);
+    rooms.delete(room.id);
     return;
   }
   if (room.players.size === 0) {
@@ -242,6 +268,7 @@ function startRoomGame(room) {
     alive: true
   }]));
   room.game = {
+    matchId: randomUUID(),
     players: gamePlayers,
     deck,
     turnOrder: players.map((peer) => peer.publicId),
@@ -341,6 +368,7 @@ function broadcastGame(room, phase = room.game?.phase) {
     };
     send(peer.socket, { type: "game-state", state: snapshot });
   }
+  if (room.lore && room.status === "playing") scheduleLoreAction(room);
 }
 
 function clearDeadlineTimer(game) {
@@ -617,6 +645,32 @@ function resolveRound(room) {
       }));
     })
   };
+  if (room.lore) {
+    const human = [...game.players.values()].find((player) => player.id !== room.lore.publicId);
+    const lore = game.players.get(room.lore.publicId);
+    const attributes = (player) => ({ hp: player.hp, shields: player.shields, luck: player.luck, cards: player.hand.length });
+    const beforeAttributes = (player) => before[player.id];
+    const winner = human.hp <= 0 || (owner.id === lore.id && owner.hand.length === 0)
+      ? "ai"
+      : lore.hp <= 0 || (owner.id === human.id && owner.hand.length === 0) ? "player" : null;
+    const observation = {
+      played: owner.id === human.id ? game.activeCard : null,
+      guessed: owner.id === lore.id ? game.guesses.get(human.id) || null : null,
+      reward: {
+        action: owner.id === lore.id ? "play" : "guess",
+        card: owner.id === lore.id ? game.activeCard : game.guesses.get(lore.id),
+        value: globalThis.BlefeAI.reward(
+          { player: beforeAttributes(human), ai: beforeAttributes(lore) },
+          { player: attributes(human), ai: attributes(lore) },
+          winner
+        )
+      }
+    };
+    if (globalThis.BlefeAI.validObservation(observation)) {
+      globalThis.BlefeAI.addObservation(aiLearning, observation);
+      saveLearningModel().catch(() => {});
+    }
+  }
   game.publicDiscards.push(game.activeCard);
   game.tableCard = game.activeCard;
   game.phase = "result";
@@ -704,6 +758,7 @@ function handleRoomAction(peer, action) {
     if (room.status !== "finished") throw new Error("A partida ainda não terminou.");
     room.rematchRequests ||= new Set();
     room.rematchRequests.add(peer.publicId);
+    if (room.lore) room.rematchRequests.add(room.lore.publicId);
     if (room.rematchRequests.size === room.players.size && room.players.size === 2) {
       room.rematchRequests.clear();
       startRoomGame(room);
@@ -818,6 +873,72 @@ function handleRoomAction(peer, action) {
   throw new Error("Ação de sala inválida.");
 }
 
+function scheduleLoreAction(room) {
+  if (room.loreTimer) return;
+  const game = room.game;
+  const lore = game.players.get(room.lore.publicId);
+  if (!lore?.alive) return;
+  const acts = (game.phase === "setup-guess" && !game.guesses.has(lore.id))
+    || (game.phase === "play" && game.turnPlayerId === lore.id)
+    || (game.phase === "guess" && game.turnPlayerId !== lore.id && !game.guesses.has(lore.id))
+    || (["joker-reveal", "joker-select", "joker-swap"].includes(game.phase) && game.jokerSelection?.ownerId === lore.id)
+    || (game.phase === "result" && game.swapOwnerId === lore.id);
+  if (!acts) return;
+  room.loreTimer = setTimeout(() => {
+    room.loreTimer = null;
+    if (room.status !== "playing" || room.game !== game) return;
+    const human = [...game.players.values()].find((player) => player.id !== lore.id);
+    const attrs = (player) => ({ hp: player.hp, shields: player.shields, luck: player.luck, cards: player.hand.length });
+    let action;
+    if (game.phase === "setup-guess" && !game.guesses.has(lore.id)) {
+      action = { action: "setup-guess", guess: cardTypes[Math.floor(Math.random() * 8)] };
+    } else if (game.phase === "play" && game.turnPlayerId === lore.id) {
+      const guesses = aiLearning.humanGuesses;
+      const total = cardTypes.reduce((sum, type) => sum + guesses[type] + 1, 0);
+      const best = lore.hand.map((type, index) => {
+        const chance = (guesses[type] + 1) / total;
+        const value = chance * globalThis.BlefeAI.effectValue(type, attrs(lore), attrs(human), true, game.deck.length)
+          + (1 - chance) * globalThis.BlefeAI.effectValue(type, attrs(lore), attrs(human), false, game.deck.length)
+          + globalThis.BlefeAI.learnedValue(aiLearning, "play", type) * 0.35;
+        return { index, value: value + Math.random() * 0.2 };
+      }).sort((a, b) => b.value - a.value)[0];
+      if (best) action = { action: "play", cardIndex: best.index };
+    } else if (game.phase === "guess" && game.turnPlayerId !== lore.id && !game.guesses.has(lore.id)) {
+      if (lore.luck > 0 && !game.eliminated.length) {
+        action = { action: "use-luck" };
+      } else {
+        const possible = cardTypes.filter((type) => !game.eliminated.includes(type));
+        const weights = possible.map((type) => {
+          const copies = ["troca", "coringa"].includes(type) ? 1 : 5;
+          const known = lore.hand.filter((card) => card === type).length + game.publicDiscards.filter((card) => card === type).length;
+          return Math.max(0, copies - known) * (aiLearning.humanPlays[type] + 1);
+        });
+        const total = weights.reduce((sum, weight) => sum + weight, 0);
+        const best = possible.map((guess) => ({
+          guess,
+          value: possible.reduce((sum, actual, index) => sum - (total ? weights[index] / total : 1 / possible.length)
+            * globalThis.BlefeAI.effectValue(actual, attrs(human), attrs(lore), guess === actual, game.deck.length), 0)
+            + globalThis.BlefeAI.learnedValue(aiLearning, "guess", guess) * 0.35 + Math.random() * 0.2
+        })).sort((a, b) => b.value - a.value)[0];
+        action = { action: "guess", guess: best.guess };
+      }
+    } else if (game.jokerSelection?.ownerId === lore.id && game.phase === "joker-reveal") {
+      const index = human.hand.findIndex((_, i) => !game.jokerSelection.selectedIndices.includes(i));
+      action = { action: "joker-reveal", index };
+    } else if (game.jokerSelection?.ownerId === lore.id && game.phase === "joker-select") {
+      action = { action: "joker-pick", index: game.jokerSelection.selectedIndices[0] };
+    } else if (game.jokerSelection?.ownerId === lore.id && game.phase === "joker-swap") {
+      action = { action: "joker-swap", index: 0 };
+    } else if (game.phase === "result" && game.swapOwnerId === lore.id && lore.hand.length > human.hand.length) {
+      action = { action: "swap" };
+    }
+    if (action) {
+      try { handleRoomAction(room.lore, action); }
+      catch (error) { logEvent("lore-action-error", { message: error.message }); }
+    }
+  }, 650);
+}
+
 function finishJokerSwap(room, ownIndex) {
   const game = room.game;
   const selection = game.jokerSelection;
@@ -833,7 +954,7 @@ function finishJokerSwap(room, ownIndex) {
   scheduleNextTurn(room);
 }
 
-function handleMessage(peer, message) {
+async function handleMessage(peer, message) {
   if (!message || typeof message !== "object" || typeof message.type !== "string") {
     sendError(peer, "Mensagem inválida.");
     return;
@@ -848,7 +969,10 @@ function handleMessage(peer, message) {
   }
 
   if (message.type === "create-room") {
-    const nickname = normalizeNickname(message.nickname);
+    const account = message.ranked ? await ranking?.getPlayer(message.token) : null;
+    if (message.ranked && !account) throw new Error("Ranking indisponível.");
+    if (!peers.has(peer.id) || peer.room) throw new Error("Conexão ou sala indisponível.");
+    const nickname = normalizeNickname(account?.nickname || message.nickname);
     const name = normalizeRoomName(message.roomName);
     if (!nickname || !name) throw new Error("Informe um nickname e nome de sala válidos.");
     if (peer.room) throw new Error("Você já está em uma sala.");
@@ -860,8 +984,10 @@ function handleMessage(peer, message) {
       status: "lobby",
       createdAt: Date.now(),
       game: null,
-      timer: null
+      timer: null,
+      ranked: Boolean(message.ranked)
     };
+    peer.accountId = account?.id || null;
     peer.nickname = nickname;
     peer.room = room;
     rooms.set(room.id, room);
@@ -873,22 +999,48 @@ function handleMessage(peer, message) {
   }
 
   if (message.type === "join-room") {
-    const nickname = normalizeNickname(message.nickname);
-    if (!nickname) throw new Error("Use um nickname de 2 a 18 caracteres.");
     if (peer.room) throw new Error("Você já está em uma sala.");
     if (typeof message.roomId !== "string") throw new Error("Sala inválida.");
     const room = rooms.get(message.roomId);
     if (!room || room.status !== "lobby") throw new Error("Sala indisponível.");
+    const account = room.ranked ? await ranking?.getPlayer(message.token) : null;
+    if (room.ranked && !account) throw new Error("Ranking indisponível.");
+    if (!peers.has(peer.id) || room.status !== "lobby" || peer.room || !rooms.has(room.id)) throw new Error("Sala indisponível.");
+    const nickname = normalizeNickname(account?.nickname || message.nickname);
+    if (!nickname) throw new Error("Use um nickname de 2 a 18 caracteres.");
     if (room.players.size >= 2) throw new Error("A sala está cheia.");
+    if (account && [...room.players.values()].some((member) => member.accountId === account.id)) throw new Error("Essa conta já está na sala.");
     if ([...room.players.values()].some((member) => member.nickname.toLowerCase() === nickname.toLowerCase())) {
       throw new Error("Esse nickname já está em uso na sala.");
     }
     peer.nickname = nickname;
+    peer.accountId = account?.id || null;
     peer.room = room;
     room.players.set(peer.publicId, peer);
     send(peer.socket, { type: "room-joined", publicId: peer.publicId, room: { ...roomSummary(room), players: [...room.players.values()].map(lobbyPlayer) } });
     relayLobby(room);
     broadcastRooms();
+    return;
+  }
+
+  if (message.type === "play-ranked-lore") {
+    if (peer.room) throw new Error("Você já está em uma sala.");
+    const account = await ranking?.getPlayer(message.token);
+    if (!account) throw new Error("Ranking indisponível.");
+    if (!peers.has(peer.id) || peer.room) throw new Error("Conexão ou sala indisponível.");
+    const lore = { publicId: randomUUID(), nickname: "Lore", isLore: true, socket: { readyState: WebSocket.CLOSED } };
+    peer.nickname = account.nickname;
+    peer.accountId = account.id;
+    const room = {
+      id: randomUUID(), name: "Partida contra Lore", hostId: peer.publicId,
+      players: new Map([[peer.publicId, peer], [lore.publicId, lore]]),
+      status: "lobby", createdAt: Date.now(), game: null, timer: null, ranked: true, lore
+    };
+    peer.room = room;
+    lore.room = room;
+    rooms.set(room.id, room);
+    send(peer.socket, { type: "room-created", publicId: peer.publicId, room: { ...roomSummary(room), players: [...room.players.values()].map(lobbyPlayer) } });
+    startRoomGame(room);
     return;
   }
 
@@ -936,6 +1088,32 @@ function handleMessage(peer, message) {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", "http://localhost");
+  if (url.pathname === "/api/ranking" && request.method === "GET") {
+    if (!ranking) return learningResponse(response, { error: "Ranking indisponível." }, 503);
+    try { learningResponse(response, { players: await ranking.leaderboard() }); }
+    catch (error) {
+      logEvent("ranking-read-error", { message: error.message });
+      learningResponse(response, { error: "Não foi possível carregar o ranking." }, 503);
+    }
+    return;
+  }
+  if (url.pathname === "/api/ranking/config" && request.method === "GET") {
+    if (!ranking) return learningResponse(response, { error: "Ranking indisponível." }, 503);
+    learningResponse(response, { url: ranking.supabaseUrl, publicKey: ranking.publicKey });
+    return;
+  }
+  if (url.pathname === "/api/ranking/profile" && request.method === "POST") {
+    if (!ranking) return learningResponse(response, { error: "Ranking indisponível." }, 503);
+    try {
+      const body = await readJsonBody(request);
+      const token = request.headers.authorization?.replace(/^Bearer /, "");
+      learningResponse(response, { player: await ranking.profile(token, body.nickname) });
+    } catch (error) {
+      logEvent("ranking-profile-error", { message: error.message });
+      learningResponse(response, { error: error.message }, 400);
+    }
+    return;
+  }
   if (url.pathname === "/health") {
     response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
     response.end(JSON.stringify({
@@ -1067,12 +1245,15 @@ webSocketServer.on("connection", (socket) => {
       socket.close(1008, "Rate limit exceeded");
       return;
     }
-    try {
-      handleMessage(peer, JSON.parse(raw.toString()));
-    } catch (error) {
-      logEvent("message-error", { peerId: peer.id, message: error.message });
-      sendError(peer, "Não foi possível processar a mensagem.");
-    }
+    peer.messageQueue = (peer.messageQueue || Promise.resolve()).then(async () => {
+      if (!peers.has(peer.id)) return;
+      try {
+        await handleMessage(peer, JSON.parse(raw.toString()));
+      } catch (error) {
+        logEvent("message-error", { peerId: peer.id, message: error.message });
+        sendError(peer, error.message || "Não foi possível processar a mensagem.");
+      }
+    });
   });
 
   socket.on("close", () => disconnectPeer(peer, "socket-closed"));
@@ -1095,4 +1276,16 @@ const heartbeat = setInterval(() => {
 
 server.on("close", () => clearInterval(heartbeat));
 await loadLearningModel();
+try {
+  ranking = await createRanking({
+    databaseUrl: process.env.BLEFE_RANKING_DISABLED === "1" ? null : process.env.DATABASE_URL,
+    supabaseUrl: process.env.SUPABASE_URL,
+    publicKey: process.env.SUPABASE_ANON_KEY,
+    caFile: process.env.SUPABASE_CA_FILE || path.join(root, "supabase-ca.crt")
+  });
+  if (ranking) logEvent("ranking-ready");
+  else logEvent("ranking-unavailable", { message: "Configuração do Supabase incompleta." });
+} catch (error) {
+  logEvent("ranking-start-error", { message: error.message });
+}
 server.listen(port, "0.0.0.0", () => logEvent("server-ready", { port }));

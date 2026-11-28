@@ -36,7 +36,7 @@ async function connect(port) {
 
 test("sala mantém cartas ocultas, cronômetros e vitória ao esvaziar a mão", { timeout: 75000 }, async (t) => {
   const port = await availablePort();
-  const server = spawn(process.execPath, ["server.js"], { env: { ...process.env, PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"] });
+  const server = spawn(process.execPath, ["server.js"], { env: { ...process.env, PORT: String(port), BLEFE_RANKING_DISABLED: "1" }, stdio: ["ignore", "pipe", "pipe"] });
   t.after(() => server.kill());
   let output = "";
   server.stdout.on("data", (chunk) => { output += chunk; });

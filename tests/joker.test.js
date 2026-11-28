@@ -5,7 +5,7 @@ import vm from "node:vm";
 import "../ai-policy.js";
 
 const source = await readFile(new URL("../server.js", import.meta.url), "utf8");
-const rules = source.slice(source.indexOf("function logEvent"), source.indexOf("function handleMessage"));
+const rules = source.slice(source.indexOf("function logEvent"), source.indexOf("async function handleMessage"));
 const clientSource = await readFile(new URL("../game.js", import.meta.url), "utf8");
 const offlineRules = clientSource.slice(clientSource.indexOf("  function resolveGuess("), clientSource.indexOf("  function endGame("));
 
@@ -13,11 +13,13 @@ function fixture(ownerHand, targetHand) {
   const context = {
     cardTypes: globalThis.BlefeAI.types,
     WebSocket: { OPEN: 1 },
+    globalThis: { BlefeAI: globalThis.BlefeAI },
+    aiLearning: globalThis.BlefeAI.createModel(),
     console: { log() {} },
     setTimeout: (callback, delay) => ({ callback, delay }),
     clearTimeout: () => {}
   };
-  const api = vm.runInNewContext(`${rules}\n({ resolveRound, resolveOpening, handleRoomAction })`, context);
+  const api = vm.runInNewContext(`${rules}\n({ resolveRound, resolveOpening, handleRoomAction, scheduleLoreAction, getLearning: () => aiLearning, setLearningSaver: (fn) => { saveLearningModel = fn; } })`, context);
   const peers = ["a", "b"].map((id) => {
     const messages = [];
     return {
@@ -45,6 +47,37 @@ function fixture(ownerHand, targetHand) {
   peers.forEach((peer) => { peer.room = room; });
   return { ...api, room, owner: players[0], target: players[1], ownerPeer: peers[0], targetPeer: peers[1] };
 }
+
+test("Lore joga no servidor apenas quando é sua vez", () => {
+  const f = fixture(["leao", "vaca"], ["peixe"]);
+  f.room.lore = f.ownerPeer;
+  f.room.game.phase = "play";
+  f.room.game.activeCard = null;
+  f.room.game.guesses.clear();
+  f.scheduleLoreAction(f.room);
+  assert.ok(f.room.loreTimer);
+  f.room.loreTimer.callback();
+  assert.equal(f.room.game.phase, "guess");
+  assert.equal(f.owner.hand.length, 1);
+  assert.ok(["leao", "vaca"].includes(f.room.game.activeCard));
+  assert.equal(f.room.loreTimer, null);
+});
+
+test("Lore palpita no servidor e aprende com o resultado da rodada", () => {
+  const f = fixture(["vaca"], ["peixe"]);
+  f.setLearningSaver(() => Promise.resolve());
+  f.room.lore = f.targetPeer;
+  f.room.game.activeCard = "leao";
+  f.room.game.guesses.clear();
+  f.scheduleLoreAction(f.room);
+  f.room.loreTimer.callback();
+  assert.equal(f.room.game.guesses.size, 1);
+  assert.equal(f.room.game.phase, "result");
+  assert.equal(f.room.game.lastResult.card, "leao");
+  assert.ok(f.room.game.lastResult.guesses.b);
+  assert.equal(f.getLearning().humanPlays.leao, 1);
+  assert.equal(f.getLearning().aiRewards.guess[f.room.game.lastResult.guesses.b].count, 1);
+});
 
 function snapshot(peer) {
   return peer.messages.filter((message) => message.type === "game-state").at(-1).state;

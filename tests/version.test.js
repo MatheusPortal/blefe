@@ -65,7 +65,7 @@ test("versão da página, arquivos e pacotes permanecem sincronizados", async ()
   assert.equal(version, lock.packages[""].version);
   const assets = [...html.matchAll(/(?:href|src)="([^"]+\.(?:js|css))\?v=([^"]+)"/g)];
   assert.deepEqual(assets.map((match) => match[1]).sort(), [
-    "ai-policy.js", "game.js", "online.js", "style.css", "version-check.js"
+    "ai-policy.js", "game.js", "online.js", "ranking-client.js", "style.css", "version-check.js"
   ]);
   for (const asset of assets) assert.equal(asset[2], version);
 });

@@ -1,12 +1,12 @@
 # Blefe de Mesa
 
-Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É possível jogar offline contra Nina, a IA, ou online em salas de 2 jogadores.
+Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É possível jogar offline contra Lore, a IA, ou online em salas de 2 jogadores.
 
 ## Como iniciar
 
 ### Modo offline
 
-Abra `index.html` em um navegador moderno e escolha **Jogar offline vs. Nina**. Não é necessário instalar pacotes nem estar conectado à internet para jogar offline.
+Abra `index.html` em um navegador moderno e escolha **Jogar offline vs. Lore**. Não é necessário instalar pacotes nem estar conectado à internet para jogar offline.
 
 ### Servidor local e modo online
 
@@ -18,6 +18,14 @@ npm start
 ```
 
 Abra `http://localhost:10000` em dois navegadores ou dispositivos e escolha **Jogar online**. Informe um nickname, crie uma sala ou entre em uma sala disponível. O anfitrião inicia quando os dois jogadores estiverem na sala.
+
+### Rank global
+
+O botão **Rank global** exibe até 100 nomes ordenados por vitórias em partidas ranqueadas. Para participar, crie uma conta com e-mail, senha e apelido, confirme o e-mail e entre na conta. O apelido Lore é reservado. Uma sala online só conta para o ranking quando criada como **Sala ranqueada** e ambos os jogadores usam contas diferentes. Também é possível jogar uma **Partida ranqueada vs. Lore**: nessa modalidade a partida é conduzida pelo servidor e as vitórias da Lore também entram no ranking. Uma desistência ou desconexão durante uma partida ranqueada dá a vitória ao adversário. Partidas offline e salas casuais não contam.
+
+O servidor exige um projeto Supabase com autenticação por e-mail habilitada e um PostgreSQL acessível pelo Session pooler. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY` (chave publishable ou anon) e `DATABASE_URL` nas variáveis do servidor; localmente, elas também podem ser definidas em `.data/supabase.env`, arquivo ignorado pelo Git. Nunca publique a URL do banco com a senha. Não inclua parâmetros SSL na URL: o servidor usa o certificado público `supabase-ca.crt` para verificar a conexão; se necessário, indique outro certificado com `SUPABASE_CA_FILE`. Na primeira inicialização, cria o esquema privado `blefe` e suas tabelas. Configure no Supabase Authentication a URL pública do jogo e as URLs de redirecionamento para que o e-mail de confirmação retorne ao site correto. No Render, configure as mesmas variáveis de ambiente no serviço; elas não são incluídas automaticamente na publicação.
+
+Os resultados são determinados pelo servidor, mas contas múltiplas e partidas combinadas ainda podem manipular o ranking. O login fica ativo apenas nesta página; uma sessão expirada exige entrar novamente. Se o banco ou o Supabase estiver indisponível, o ranking informa o erro e os modos casuais continuam disponíveis.
 
 Para validar a sintaxe dos arquivos JavaScript, execute `npm run check`.
 Para testar os cards do chat e uma partida online completa, execute `node --test`.
@@ -55,7 +63,7 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 
 A IA do modo offline avalia os efeitos previstos das cartas, considerando vidas, escudos, sorte, tamanho das mãos, cartas restantes e condições de vitória. Ao adivinhar, considera as cartas conhecidas e usa as opções realmente eliminadas pela sorte. Ela também combina padrões da partida atual com estatísticas agregadas das partidas contra jogadores e uma recompensa calculada pelas mudanças de recursos e pela vitória ou derrota. A exploração continua para que a IA possa descobrir estratégias melhores; o aprendizado não garante uma vitória nem melhora em todas as partidas.
 
-Quando o servidor está disponível, essas observações são compartilhadas entre os jogadores que usam esse servidor. O modelo anterior é preservado e atualizado para o novo formato. Ele fica em `.data/ai-learning.json` ou no arquivo definido por `AI_LEARNING_FILE`; em hospedagens efêmeras, configure armazenamento persistente para manter o aprendizado após reinícios ou implantações. Ao jogar sem servidor ou se a comunicação falhar, o aprendizado fica apenas no armazenamento local do navegador e não é sincronizado posteriormente.
+Quando o servidor está disponível, essas observações são compartilhadas entre os jogadores que usam esse servidor. Na partida ranqueada contra Lore, o servidor também registra observações e recompensas no mesmo modelo. O modelo anterior é preservado e atualizado para o novo formato. Ele fica em `.data/ai-learning.json` ou no arquivo definido por `AI_LEARNING_FILE`; em hospedagens efêmeras, configure armazenamento persistente para manter o aprendizado após reinícios ou implantações. Ao jogar sem servidor ou se a comunicação falhar, o aprendizado fica apenas no armazenamento local do navegador e não é sincronizado posteriormente.
 
 ## Modo online e implantação
 

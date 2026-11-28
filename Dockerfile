@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-COPY index.html style.css ai-policy.js game.js online.js version-check.js server.js ./
+COPY index.html style.css ai-policy.js game.js online.js ranking-client.js ranking.js supabase-ca.crt version-check.js server.js ./
 EXPOSE 10000
 
 CMD ["npm", "start"]

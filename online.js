@@ -5,6 +5,7 @@
   const onlineForm = document.querySelector("#online-form");
   const nicknameInput = document.querySelector("#nickname-input");
   const roomNameInput = document.querySelector("#room-name-input");
+  const rankedRoomInput = document.querySelector("#ranked-room-input");
   const createRoomButton = document.querySelector("#find-match-button");
   const refreshRoomsButton = document.querySelector("#refresh-rooms-button");
   const startRoomButton = document.querySelector("#start-room-button");
@@ -292,13 +293,13 @@
       const title = document.createElement("strong");
       title.textContent = room.name;
       const count = document.createElement("span");
-      count.textContent = `${room.playerCount}/2 · ${room.playerCount === 2 ? "Pronta" : "1 vaga"}`;
+      count.textContent = `${room.ranked ? "Ranqueada · " : ""}${room.playerCount}/2 · ${room.playerCount === 2 ? "Pronta" : "1 vaga"}`;
       info.append(title, count);
       const join = document.createElement("button");
       join.className = "secondary-button";
       join.type = "button";
       join.textContent = "Entrar";
-      join.addEventListener("click", () => joinRoom(room.id));
+      join.addEventListener("click", () => joinRoom(room.id, room.ranked));
       row.append(info, join);
       roomList.append(row);
     }
@@ -318,14 +319,16 @@
     logConnection(`Sala ${room.name}: ${players.length} jogador(es).`);
   }
 
-  function joinRoom(roomId) {
-    activeNickname = nicknameInput.value.trim().replace(/\s+/g, " ");
+  function joinRoom(roomId, ranked) {
+    const token = ranked ? window.BlefeRanking.requireAccount() : null;
+    if (ranked && !token) return;
+    activeNickname = ranked ? window.BlefeRanking.getPlayer().nickname : nicknameInput.value.trim().replace(/\s+/g, " ");
     if (activeNickname.length < 2 || activeNickname.length > 18) {
       setStatus("Informe seu nickname antes de entrar.");
       nicknameInput.focus();
       return;
     }
-    send("join-room", { roomId, nickname: activeNickname });
+    send("join-room", { roomId, nickname: activeNickname, token });
   }
 
   function openSocket() {
@@ -379,6 +382,11 @@
       appendChatMessage(message.from.nickname, message.text, message.from.id === publicId);
     } else if (message.type === "game-over") {
       setStatus(message.winner ? `${message.winner.nickname} venceu a sala.` : "A sala terminou.");
+    } else if (message.type === "ranking-saved") {
+      logGameEvent("Vitória registrada no rank global.");
+    } else if (message.type === "ranking-error") {
+      logGameEvent(message.message);
+      setStatus(message.message);
     } else if (message.type === "error") {
       setStatus(message.message);
       logConnection(message.message);
@@ -409,24 +417,40 @@
     leaveRoom();
     window.BlefeGame.startOffline();
   });
+  document.querySelector("#ranked-lore-button").addEventListener("click", () => {
+    const token = window.BlefeRanking.requireAccount();
+    if (!token) return;
+    if (activeRoom) {
+      setStatus("Saia da sala atual antes de iniciar outra partida.");
+      return;
+    }
+    openSocket();
+    send("play-ranked-lore", { token });
+  });
   document.querySelector("#menu-rules-button").addEventListener("click", () => document.querySelector("#rules-dialog").showModal());
   document.querySelector("#close-online").addEventListener("click", () => onlineDialog.close());
   document.querySelector("#close-connection-log").addEventListener("click", () => connectionDialog.close());
   connectionStatusButton.addEventListener("click", () => connectionDialog.showModal());
   refreshRoomsButton.addEventListener("click", () => send("list-rooms"));
+  rankedRoomInput.addEventListener("change", () => {
+    nicknameInput.required = !rankedRoomInput.checked;
+  });
   startRoomButton.addEventListener("click", () => send("start-room"));
   leaveRoomButton.addEventListener("click", leaveRoom);
   leaveGameButton.addEventListener("click", leaveRoom);
 
   onlineForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    activeNickname = nicknameInput.value.trim().replace(/\s+/g, " ");
+    const ranked = rankedRoomInput.checked;
+    const token = ranked ? window.BlefeRanking.requireAccount() : null;
+    if (ranked && !token) return;
+    activeNickname = ranked ? window.BlefeRanking.getPlayer().nickname : nicknameInput.value.trim().replace(/\s+/g, " ");
     const roomName = roomNameInput.value.trim().replace(/\s+/g, " ");
     if (activeNickname.length < 2 || roomName.length < 2) {
       setStatus("Informe nickname e nome da sala.");
       return;
     }
-    send("create-room", { nickname: activeNickname, roomName });
+    send("create-room", { nickname: activeNickname, roomName, ranked, token });
   });
 
   chatForm.addEventListener("submit", (event) => {

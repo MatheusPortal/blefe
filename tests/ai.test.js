@@ -50,7 +50,7 @@ async function availablePort() {
 }
 
 async function startServer(port, file) {
-  const server = spawn(process.execPath, ["server.js"], { env: { ...process.env, PORT: String(port), AI_LEARNING_FILE: file }, stdio: ["ignore", "pipe", "pipe"] });
+  const server = spawn(process.execPath, ["server.js"], { env: { ...process.env, PORT: String(port), AI_LEARNING_FILE: file, BLEFE_RANKING_DISABLED: "1" }, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   server.stdout.on("data", (chunk) => { output += chunk; });
   const deadline = Date.now() + 5000;

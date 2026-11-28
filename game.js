@@ -20,7 +20,7 @@
   const INITIAL_HAND_SIZE = 7;
   const MAX_INITIAL_CARDS_PER_SPECIES = 3;
   const MAX_LUCK = 5;
-  const AI_NAME = "Nina";
+  const AI_NAME = "Lore";
   const LUCK_ELIMINATIONS = 3;
   const CARDS = {
     leao: { name: "Leão", emoji: "🦁", color: "#e9a16f", effect: "Erro — adversário: −2 vidas, +1 carta; quem jogou: +1 sorte." },
