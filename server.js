@@ -8,6 +8,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import dotenv from "dotenv";
 import { createRanking } from "./ranking.js";
 import "./ai-policy.js";
+import "./avatars.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(root, ".data", "supabase.env"), quiet: true });
@@ -19,6 +20,8 @@ const socketPeers = new WeakMap();
 const cardTypes = globalThis.BlefeAI.types;
 const aiLearningFile = process.env.AI_LEARNING_FILE || path.join(root, ".data", "ai-learning.json");
 const learningWriteOrigin = new Map();
+const accountRequests = new Map();
+const serverRegion = process.env.BLEFE_SERVER_REGION || null;
 let saveLearningPromise = Promise.resolve();
 let aiLearning = newLearningModel();
 let ranking = null;
@@ -26,6 +29,7 @@ const staticFiles = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
+  ["/avatars.js", ["avatars.js", "text/javascript; charset=utf-8"]],
   ["/game.js", ["game.js", "text/javascript; charset=utf-8"]],
   ["/ai-policy.js", ["ai-policy.js", "text/javascript; charset=utf-8"]],
   ["/online.js", ["online.js", "text/javascript; charset=utf-8"]],
@@ -121,6 +125,7 @@ function roomSummary(room) {
     status: room.status,
     ranked: Boolean(room.ranked),
     competitive: Boolean(room.competitive),
+    region: serverRegion,
     startsAt: room.startsAt || null,
     serverTime: Date.now()
   };
@@ -146,7 +151,7 @@ function maintainCompetitiveRooms() {
 }
 
 function lobbyPlayer(peer) {
-  return { id: peer.publicId, nickname: peer.nickname };
+  return { id: peer.publicId, nickname: peer.nickname, avatar: peer.avatar };
 }
 
 function broadcastRooms() {
@@ -307,6 +312,7 @@ function startRoomGame(room) {
   const gamePlayers = new Map(players.map((peer, index) => [peer.publicId, {
     id: peer.publicId,
     nickname: peer.nickname,
+    avatar: peer.avatar,
     peer,
     hand: hands[index],
     hp: 5,
@@ -331,7 +337,6 @@ function startRoomGame(room) {
     tableCard: null,
     publicDiscards: [],
     winnerId: null,
-    swapOwnerId: null,
     jokerSelection: null,
     deadlineTimer: null,
     eliminated: []
@@ -352,6 +357,7 @@ function gamePlayerList(game, recipientId) {
   return game.turnOrder.map((id) => game.players.get(id)).map((player) => ({
     id: player.id,
     nickname: player.nickname,
+    avatar: player.avatar,
     hp: player.hp,
     shields: player.shields,
     luck: player.luck,
@@ -394,7 +400,6 @@ function broadcastGame(room, phase = room.game?.phase) {
           cardsDrawn: cards.length
         }))
       } : null,
-      swapOwnerId: game.swapOwnerId,
       jokerSelection: game.jokerSelection ? {
         ownerId: game.jokerSelection.ownerId,
         targetId: game.jokerSelection.targetId,
@@ -576,7 +581,10 @@ function resolveEffect(game, type, owner, guesser, correct) {
     result.shieldsLost = lost;
     result.ownerShields = gainShield(owner, 1);
   } else if (type === "troca") {
-    game.swapOwnerId = owner.id;
+    if (owner.hand.length > 0 && guesser.hand.length > 0) {
+      [owner.hand, guesser.hand] = [guesser.hand, owner.hand];
+      result.swappedWith = guesser.id;
+    }
   } else if (type === "coringa") {
     const healed = Math.min(1, 5 - owner.hp);
     owner.hp += healed;
@@ -630,7 +638,6 @@ function scheduleNextTurn(room) {
   room.timer = setTimeout(() => {
     room.timer = null;
     if (room.status !== "playing") return;
-    room.game.swapOwnerId = null;
     startNextTurn(room);
   }, 3_000);
 }
@@ -649,7 +656,6 @@ function startNextTurn(room) {
   game.activeCard = null;
   game.guesses.clear();
   game.lastResult = null;
-  game.swapOwnerId = null;
   game.eliminated = [];
   game.nextTurnAt = null;
   scheduleDeadline(room);
@@ -677,6 +683,7 @@ function resolveRound(room) {
     ownerId: owner.id,
     guesses: Object.fromEntries(game.guesses),
     outcomes,
+    swappedWith: outcomes.find((outcome) => outcome.swappedWith)?.swappedWith || null,
     attributes: [...game.players.values()].flatMap((player) => {
       const previous = before[player.id];
       return [
@@ -850,17 +857,6 @@ function handleRoomAction(peer, action) {
     advanceIfNeeded(room);
     return;
   }
-  if (action.action === "swap") {
-    if (game.phase !== "result" || game.swapOwnerId !== player.id) throw new Error("A troca não está disponível.");
-    const targetId = nextAliveId(game, player.id);
-    const target = targetId && game.players.get(targetId);
-    if (!target) throw new Error("Não há jogador para trocar.");
-    [player.hand, target.hand] = [target.hand, player.hand];
-    game.swapOwnerId = null;
-    game.lastResult.swappedWith = target.id;
-    broadcastGame(room, "result");
-    return;
-  }
   if (action.action === "use-luck") {
     if (game.phase !== "guess" || game.turnPlayerId === player.id) throw new Error("A sorte só pode ser usada ao adivinhar.");
     if (player.luck < 1 || (game.eliminated || []).length) throw new Error("Sorte indisponível.");
@@ -928,8 +924,7 @@ function scheduleLoreAction(room) {
   const acts = (game.phase === "setup-guess" && !game.guesses.has(lore.id))
     || (game.phase === "play" && game.turnPlayerId === lore.id)
     || (game.phase === "guess" && game.turnPlayerId !== lore.id && !game.guesses.has(lore.id))
-    || (["joker-reveal", "joker-select", "joker-swap"].includes(game.phase) && game.jokerSelection?.ownerId === lore.id)
-    || (game.phase === "result" && game.swapOwnerId === lore.id);
+    || (["joker-reveal", "joker-select", "joker-swap"].includes(game.phase) && game.jokerSelection?.ownerId === lore.id);
   if (!acts) return;
   room.loreTimer = setTimeout(() => {
     room.loreTimer = null;
@@ -944,8 +939,9 @@ function scheduleLoreAction(room) {
       const total = cardTypes.reduce((sum, type) => sum + guesses[type] + 1, 0);
       const best = lore.hand.map((type, index) => {
         const chance = (guesses[type] + 1) / total;
-        const value = chance * globalThis.BlefeAI.effectValue(type, attrs(lore), attrs(human), true, game.deck.length)
-          + (1 - chance) * globalThis.BlefeAI.effectValue(type, attrs(lore), attrs(human), false, game.deck.length)
+        const owner = { ...attrs(lore), cards: lore.hand.length - 1 };
+        const value = chance * globalThis.BlefeAI.effectValue(type, owner, attrs(human), true, game.deck.length)
+          + (1 - chance) * globalThis.BlefeAI.effectValue(type, owner, attrs(human), false, game.deck.length)
           + globalThis.BlefeAI.learnedValue(aiLearning, "play", type) * 0.35;
         return { index, value: value + Math.random() * 0.2 };
       }).sort((a, b) => b.value - a.value)[0];
@@ -976,8 +972,6 @@ function scheduleLoreAction(room) {
       action = { action: "joker-pick", index: game.jokerSelection.selectedIndices[0] };
     } else if (game.jokerSelection?.ownerId === lore.id && game.phase === "joker-swap") {
       action = { action: "joker-swap", index: 0 };
-    } else if (game.phase === "result" && game.swapOwnerId === lore.id && lore.hand.length > human.hand.length) {
-      action = { action: "swap" };
     }
     if (action) {
       try { handleRoomAction(room.lore, action); }
@@ -1007,6 +1001,12 @@ async function handleMessage(peer, message) {
     return;
   }
 
+  if (message.type === "latency-probe") {
+    if (!Number.isSafeInteger(message.id) || message.id < 0) throw new Error("Medição de conexão inválida.");
+    send(peer.socket, { type: "latency-result", id: message.id });
+    return;
+  }
+
   if (message.type === "list-rooms") {
     if (!peer.room) send(peer.socket, {
       type: "room-list",
@@ -1016,11 +1016,13 @@ async function handleMessage(peer, message) {
   }
 
   if (message.type === "create-room") {
-    const account = message.ranked ? await ranking?.getPlayer(message.token) : null;
-    if (message.ranked && !account) throw new Error("Ranking indisponível.");
+    const account = message.token ? await ranking?.getPlayer(message.token) : null;
+    if ((message.ranked || message.token) && !account) throw new Error("Conta ou ranking indisponível.");
     if (!peers.has(peer.id) || peer.room) throw new Error("Conexão ou sala indisponível.");
     const nickname = normalizeNickname(account?.nickname || message.nickname);
     const name = normalizeRoomName(message.roomName);
+    const avatar = account?.avatar ?? message.avatar ?? 1;
+    if (!globalThis.BlefeAvatars.isValid(avatar)) throw new Error("Avatar inválido.");
     if (!nickname || !name) throw new Error("Informe um nickname e nome de sala válidos.");
     if (peer.room) throw new Error("Você já está em uma sala.");
     const room = {
@@ -1036,6 +1038,7 @@ async function handleMessage(peer, message) {
     };
     peer.accountId = account?.id || null;
     peer.nickname = nickname;
+    peer.avatar = avatar;
     peer.room = room;
     rooms.set(room.id, room);
     send(peer.socket, { type: "room-created", publicId: peer.publicId, room: { ...roomSummary(room), players: [lobbyPlayer(peer)] } });
@@ -1050,10 +1053,12 @@ async function handleMessage(peer, message) {
     if (typeof message.roomId !== "string") throw new Error("Sala inválida.");
     const room = rooms.get(message.roomId);
     if (!room || room.status !== "lobby") throw new Error("Sala indisponível.");
-    const account = room.ranked ? await ranking?.getPlayer(message.token) : null;
-    if (room.ranked && !account) throw new Error("Ranking indisponível.");
+    const account = message.token ? await ranking?.getPlayer(message.token) : null;
+    if ((room.ranked || message.token) && !account) throw new Error("Ranking indisponível.");
     if (!peers.has(peer.id) || room.status !== "lobby" || peer.room || !rooms.has(room.id)) throw new Error("Sala indisponível.");
     const nickname = normalizeNickname(account?.nickname || message.nickname);
+    const avatar = account?.avatar ?? message.avatar ?? 1;
+    if (!globalThis.BlefeAvatars.isValid(avatar)) throw new Error("Avatar inválido.");
     if (!nickname) throw new Error("Use um nickname de 2 a 18 caracteres.");
     if (room.players.size >= 2) throw new Error("A sala está cheia.");
     if (account && [...room.players.values()].some((member) => member.accountId === account.id)) throw new Error("Essa conta já está na sala.");
@@ -1061,6 +1066,7 @@ async function handleMessage(peer, message) {
       throw new Error("Esse nickname já está em uso na sala.");
     }
     peer.nickname = nickname;
+    peer.avatar = avatar;
     peer.accountId = account?.id || null;
     peer.room = room;
     if (!room.hostId) room.hostId = peer.publicId;
@@ -1077,8 +1083,9 @@ async function handleMessage(peer, message) {
     const account = await ranking?.getPlayer(message.token);
     if (!account) throw new Error("Ranking indisponível.");
     if (!peers.has(peer.id) || peer.room) throw new Error("Conexão ou sala indisponível.");
-    const lore = { publicId: randomUUID(), nickname: "Lore", isLore: true, socket: { readyState: WebSocket.CLOSED } };
+    const lore = { publicId: randomUUID(), nickname: "Lore", avatar: 31, isLore: true, socket: { readyState: WebSocket.CLOSED } };
     peer.nickname = account.nickname;
+    peer.avatar = account.avatar;
     peer.accountId = account.id;
     const room = {
       id: randomUUID(), name: "Partida contra Lore", hostId: peer.publicId,
@@ -1133,6 +1140,36 @@ async function handleMessage(peer, message) {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", "http://localhost");
+  if (["/api/account/login", "/api/account/signup", "/api/account/session"].includes(url.pathname) && request.method === "POST") {
+    if (!ranking) return learningResponse(response, { error: "Contas indisponíveis." }, 503);
+    const origin = request.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    for (const [key, value] of accountRequests) {
+      if (now - value.startedAt >= 60_000) accountRequests.delete(key);
+    }
+    const attempts = accountRequests.get(origin) || { startedAt: now, count: 0 };
+    attempts.count += 1;
+    accountRequests.set(origin, attempts);
+    if (attempts.count > 40) return learningResponse(response, { error: "Muitas tentativas. Aguarde um minuto." }, 429);
+    try {
+      let result;
+      if (url.pathname.endsWith("/session")) {
+        const token = request.headers.authorization?.replace(/^Bearer /, "");
+        result = { player: await ranking.getSessionPlayer(token) };
+      } else {
+        const body = await readJsonBody(request);
+        result = url.pathname.endsWith("/signup")
+          ? await ranking.signup(body.nickname, body.email, body.password, body.avatar)
+          : await ranking.login(body.identifier, body.password);
+      }
+      learningResponse(response, result);
+    } catch (error) {
+      const message = error instanceof SyntaxError ? "Dados inválidos." : error.message;
+      logEvent("account-request-error", { message });
+      learningResponse(response, { error: message }, 400);
+    }
+    return;
+  }
   if (url.pathname === "/api/ranking" && request.method === "GET") {
     if (!ranking) return learningResponse(response, { error: "Ranking indisponível." }, 503);
     try { learningResponse(response, { players: await ranking.leaderboard() }); }
@@ -1152,7 +1189,7 @@ const server = createServer(async (request, response) => {
     try {
       const body = await readJsonBody(request);
       const token = request.headers.authorization?.replace(/^Bearer /, "");
-      learningResponse(response, { player: await ranking.profile(token, body.nickname) });
+      learningResponse(response, { player: await ranking.profile(token, body.nickname, body.avatar) });
     } catch (error) {
       logEvent("ranking-profile-error", { message: error.message });
       learningResponse(response, { error: error.message }, 400);

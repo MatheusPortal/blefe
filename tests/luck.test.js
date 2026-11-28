@@ -34,7 +34,7 @@ test("controle de sorte mantém o ícone e só habilita quando a ação está di
 });
 
 test("ganhos de escudo respeitam o limite no offline e no servidor", () => {
-  const offlineCode = source.slice(source.indexOf("  function gainLuck("), source.indexOf("  function isSwapAvailable("));
+  const offlineCode = source.slice(source.indexOf("  function gainLuck("), source.indexOf("  function triggerVisualEffect("));
   const serverCode = serverSource.slice(serverSource.indexOf("function damage("), serverSource.indexOf("function checkEliminationsAndWinner("));
   for (const [type, correct, recipient, amount] of [
     ["tigre", true, "guesser", 1], ["tartaruga", true, "guesser", 1],
@@ -65,7 +65,7 @@ test("ganhos de escudo respeitam o limite no offline e no servidor", () => {
 });
 
 test("ganhos de vida e sorte param em cinco no offline e no servidor", () => {
-  const offlineCode = source.slice(source.indexOf("  function gainLuck("), source.indexOf("  function isSwapAvailable("));
+  const offlineCode = source.slice(source.indexOf("  function gainLuck("), source.indexOf("  function triggerVisualEffect("));
   const serverCode = serverSource.slice(serverSource.indexOf("function damage("), serverSource.indexOf("function checkEliminationsAndWinner("));
   for (const initial of [4, 5]) {
     const owner = { id: "owner", name: "Dono", hp: initial, shields: 0, luck: initial, hand: [] };

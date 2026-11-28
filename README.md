@@ -6,7 +6,7 @@ Jogo de cartas para navegador, feito com HTML, CSS, JavaScript e Canvas. É poss
 
 ### Modo offline
 
-Abra `index.html` em um navegador moderno e escolha **Offline**. Sem conta, é possível jogar sem instalar pacotes ou conectar à internet, mas a partida não conta para o ranking.
+Abra `index.html` em um navegador moderno, escolha um avatar e informe um nickname para continuar como visitante. Depois escolha **Offline**. Sem conta, é possível jogar sem instalar pacotes ou conectar à internet, mas a partida não conta para o ranking.
 
 ### Servidor local e modo online
 
@@ -17,13 +17,17 @@ npm ci
 npm start
 ```
 
-Abra `http://localhost:10000` em dois navegadores ou dispositivos e escolha **Online**. Informe um nickname, crie uma sala casual ou entre em uma sala disponível. O servidor mantém três mesas competitivas disponíveis; elas exigem contas de ambos os jogadores. A partida começa automaticamente cinco segundos após a entrada do segundo jogador; se alguém sair, a contagem é cancelada. A lista informa a quantidade de conexões ativas no servidor online. Se alguém sair ou se desconectar durante a partida, o chat informa o abandono e o vencedor.
+Abra `http://localhost:10000` em dois navegadores ou dispositivos. Na entrada, escolha um avatar e continue com nickname de visitante ou entre na sua conta. Em **Online**, a página mostra as salas disponíveis, com botões para atualizar e criar sala. O servidor mantém três mesas competitivas disponíveis; elas exigem contas de ambos os jogadores. A partida começa automaticamente cinco segundos após a entrada do segundo jogador; se alguém sair, a contagem é cancelada. A lista informa a quantidade de conexões ativas. Se alguém sair ou se desconectar durante a partida, o chat informa o abandono e o vencedor.
+
+Os 50 avatares ilustrados combinam dez personagens com cinco estilos. A escolha de visitantes vale enquanto a página estiver aberta; a escolha de contas é salva no perfil e aparece para os demais jogadores na espera e na partida.
+
+As salas são hospedadas no mesmo servidor: o ping mostrado é o tempo de ida e volta entre o navegador e esse servidor, não entre jogadores. Configure `BLEFE_SERVER_REGION=us-ohio` para identificar a região Ohio, EUA, como no serviço Render incluído. Sem uma região reconhecida, a lista informa que ela está indisponível. O servidor local não representa a latência da implantação.
 
 ### Rank global
 
-O botão **Rank global** exibe até 100 nomes ordenados por vitórias. Para participar, crie uma conta com e-mail, senha e apelido, confirme o e-mail e entre na conta. O apelido Lore é reservado. As mesas competitivas contam para o ranking quando ambos os jogadores usam contas diferentes. Ao escolher **Offline** com uma conta conectada, a partida contra Lore é conduzida pelo servidor e as vitórias de ambos contam. Se o servidor estiver indisponível, é possível escolher jogar sem pontuação. Uma desistência ou desconexão durante uma partida com ranking dá a vitória ao adversário. Partidas de convidados e salas casuais não contam.
+O botão **Rank global** exibe até 100 nomes ordenados por vitórias. Para participar, crie uma conta com e-mail, senha e apelido. Ao abrir o link de confirmação enviado por e-mail, você entra automaticamente no navegador em que o link foi aberto; também pode entrar com nickname ou e-mail e senha. O apelido Lore é reservado. Um cadastro ainda não utilizado reserva o nickname por sete dias; depois, entre com o e-mail para concluir o perfil. Contas criadas antes desta versão precisam entrar uma vez com o e-mail para habilitar o login por nickname. As mesas competitivas contam para o ranking quando ambos os jogadores usam contas diferentes. Ao escolher **Offline** com uma conta conectada, a partida contra Lore é conduzida pelo servidor e as vitórias de ambos contam. Se o servidor estiver indisponível, é possível escolher jogar sem pontuação. Uma desistência ou desconexão durante uma partida com ranking dá a vitória ao adversário. Partidas de convidados e salas casuais não contam.
 
-O servidor exige um projeto Supabase com autenticação por e-mail habilitada e um PostgreSQL acessível pelo Session pooler. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY` (chave publishable ou anon) e `DATABASE_URL` nas variáveis do servidor; localmente, elas também podem ser definidas em `.data/supabase.env`, arquivo ignorado pelo Git. Nunca publique a URL do banco com a senha. Não inclua parâmetros SSL na URL: o servidor usa o certificado público `supabase-ca.crt` para verificar a conexão; se necessário, indique outro certificado com `SUPABASE_CA_FILE`. Na primeira inicialização, cria o esquema privado `blefe` e suas tabelas. Configure no Supabase Authentication a URL pública do jogo e as URLs de redirecionamento para que o e-mail de confirmação retorne ao site correto. No Render, configure as mesmas variáveis de ambiente no serviço; elas não são incluídas automaticamente na publicação.
+O servidor exige um projeto Supabase com autenticação por e-mail habilitada e um PostgreSQL acessível pelo Session pooler. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY` (chave publishable ou anon) e `DATABASE_URL` nas variáveis do servidor; localmente, elas também podem ser definidas em `.data/supabase.env`, arquivo ignorado pelo Git. Nunca publique a URL do banco com a senha. Não inclua parâmetros SSL na URL: o servidor usa o certificado público `supabase-ca.crt` para verificar a conexão; se necessário, indique outro certificado com `SUPABASE_CA_FILE`. Na inicialização, cria ou atualiza o esquema privado `blefe`, incluindo avatar e o e-mail necessário para o login por nickname. O servidor encaminha a autenticação ao Supabase sem armazenar senhas. Configure no Supabase Authentication a URL pública do jogo e as URLs de redirecionamento para que o e-mail de confirmação retorne ao site correto. No Render, configure as mesmas variáveis de ambiente no serviço; elas não são incluídas automaticamente na publicação.
 
 Os resultados são determinados pelo servidor, mas contas múltiplas e partidas combinadas ainda podem manipular o ranking. O login fica ativo apenas nesta página; uma sessão expirada exige entrar novamente. Se o banco ou o Supabase estiver indisponível, o ranking informa o erro e os modos casuais continuam disponíveis.
 
@@ -47,14 +51,15 @@ Para testar os cards do chat e uma partida online completa, execute `node --test
 - Na distribuição inicial, cada jogador pode receber no máximo 3 cartas do mesmo animal. Troca e Coringa são únicas no baralho.
 - Cartas bônus são compradas apenas do monte restante das 42 cartas. Quando ele acaba, não surgem cartas novas.
 - Cartas jogadas não voltam à mão.
-- Leão: um palpite errado tira 2 vidas de quem adivinhou.
+- Leão: um palpite errado causa 2 de dano a quem adivinhou.
 - Coelho: um palpite certo dá 1 ponto de sorte a quem adivinhou. Gastar sorte elimina três opções incorretas durante um palpite.
 - Vaca: um palpite errado dá 2 cartas extras a quem adivinhou.
 - Peixe: ao errar, o adversário compra 2 cartas e perde até 3 escudos; quem jogou ganha 1 sorte e 1 vida.
-- Tigre: um palpite errado tira 1 vida.
+- Tigre: um palpite errado causa 1 de dano.
 - Macaco: um palpite errado causa 3 de dano, dá 1 carta ao adversário e 2 escudos a quem jogou.
 - Elefante: um palpite errado tira 1 vida e até 2 escudos do adversário.
-- Tartaruga: um palpite certo dá 1 escudo, que bloqueia o próximo evento de dano.
+- Tartaruga: um palpite certo recupera 1 vida ou, com vida cheia, dá 1 escudo.
+- Troca: em erro, as mãos são trocadas automaticamente na rodada. Se for a última carta de quem jogou, a vitória acontece antes da troca. Em acerto, não há troca.
 - Coringa: em erro, quem jogou ganha 1 vida e 1 escudo. Clique em até 2 cartas no leque adversário para revelá-las, escolha 1 delas e depois uma carta própria para trocá-las. Se o adversário tiver somente 1 carta, revele essa carta. Se o Coringa for sua última carta, você vence antes da troca.
 - Cada ação online tem limite de 40 segundos. Se o tempo acabar, a ação é escolhida automaticamente.
 - Os avisos de resultado aparecem abaixo da mesa; após 2,4 segundos, a próxima jogada começa automaticamente. Ao fim da partida, a mesa mostra o resultado e o botão para jogar novamente.

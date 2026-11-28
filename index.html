@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173d35">
-  <meta name="application-version" content="1.3.1">
+  <meta name="application-version" content="1.4.0">
   <title>Blefe de Mesa — Cartas & Estratégia</title>
-  <link rel="stylesheet" href="style.css?v=1.3.1">
+  <link rel="stylesheet" href="style.css?v=1.4.0">
 </head>
 <body>
   <main class="app">
@@ -35,8 +35,32 @@
       </div>
     </header>
 
-    <section class="main-menu" id="main-menu" aria-labelledby="menu-title">
+    <section class="main-menu" id="entry-screen" aria-labelledby="entry-title">
+      <div class="menu-card entry-card">
+        <p class="eyebrow">BEM-VINDO À MESA</p>
+        <h1 id="entry-title">Escolha seu lugar.</h1>
+        <p>Entre como visitante ou acesse sua conta.</p>
+        <form id="entry-form" class="entry-form">
+          <button class="entry-avatar" id="entry-avatar-button" type="button" aria-label="Escolher avatar" title="Escolher avatar"></button>
+          <small class="entry-avatar-hint">Toque no avatar para escolher</small>
+          <label for="nickname-input">Seu nickname</label>
+          <input id="nickname-input" name="nickname" type="text" minlength="2" maxlength="18" autocomplete="nickname" placeholder="Como quer ser chamado?" required>
+          <button class="primary-button" type="submit">Continuar como visitante</button>
+        </form>
+        <div class="entry-account-actions">
+          <button class="secondary-button" id="entry-account-button" type="button">Entrar</button>
+          <button class="secondary-button" id="entry-signup-button" type="button">Criar conta</button>
+        </div>
+        <p class="online-status" id="entry-status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="main-menu" id="main-menu" aria-labelledby="menu-title" hidden>
       <div class="menu-card">
+        <button class="profile-button" id="profile-button" type="button" aria-label="Alterar avatar">
+          <span class="profile-avatar" id="profile-avatar" aria-hidden="true"></span>
+          <span><strong id="profile-name"></strong><small>Alterar avatar</small></span>
+        </button>
         <div class="menu-emblem" aria-hidden="true"><span>♣</span><span>♠</span><span>♦</span></div>
         <p class="eyebrow">CARTAS · ESTRATÉGIA · BLEFE</p>
         <h1 id="menu-title">A mesa está pronta.</h1>
@@ -47,7 +71,34 @@
         </div>
         <div class="menu-extras" aria-label="Opções ranqueadas">
           <button class="secondary-button menu-button" id="rank-button" type="button">Rank global</button>
+          <button class="text-button" id="change-identity-button" type="button">Trocar jogador</button>
         </div>
+      </div>
+    </section>
+
+    <section class="online-screen" id="online-screen" aria-labelledby="online-title" hidden>
+      <div class="online-page">
+        <div class="online-page-head">
+          <div>
+            <p class="eyebrow">DUELAS ONLINE · 1 CONTRA 1</p>
+            <h1 id="online-title">Salas online</h1>
+            <p>Encontre sua próxima partida.</p>
+            <button class="profile-button online-profile" id="online-profile-button" type="button" aria-label="Alterar avatar">
+              <span class="profile-avatar" id="online-profile-avatar" aria-hidden="true"></span>
+              <span><strong id="online-profile-name"></strong><small>Alterar avatar</small></span>
+            </button>
+          </div>
+          <div class="dialog-actions">
+            <button class="utility-icon" id="refresh-rooms-button" type="button" aria-label="Atualizar salas" title="Atualizar salas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.5-2"/></svg></button>
+            <button class="utility-icon" id="open-create-room" type="button" aria-label="Criar sala" title="Criar sala"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+            <button class="utility-icon" id="close-online" type="button" aria-label="Voltar ao menu" title="Voltar ao menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17 5 12l5-5M5 12h14"/></svg></button>
+          </div>
+        </div>
+        <section class="room-list-section" aria-labelledby="room-list-title">
+          <div class="room-list-heading"><h2 id="room-list-title">Salas disponíveis</h2><span class="online-count" id="online-player-count" aria-live="polite">Conectando...</span></div>
+          <div class="room-list" id="room-list"></div>
+        </section>
+        <p class="online-status" id="online-status" role="status" aria-live="polite">Conecte-se para listar as salas.</p>
       </div>
     </section>
 
@@ -110,7 +161,6 @@
               <strong id="round-countdown-value">4</strong>
               <span>s</span>
             </div>
-            <button class="turn-tool-button swap-hands-button" id="swap-hands-button" type="button" hidden>↔ Trocar mãos</button>
           </div>
           <button class="hint-button" id="use-luck-button" type="button" aria-label="Usar sorte" title="Usar sorte" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c.8 5 2.2 7.2 7 9-4.8 1.8-6.2 4-7 9-.8-5-2.2-7.2-7-9 4.8-1.8 6.2-4 7-9Z"/></svg>
@@ -156,20 +206,25 @@
       <button class="icon-button" id="close-rules" type="button" aria-label="Fechar regras">×</button>
     </div>
     <div class="rules-content">
-      <p>Você e o adversário começam com <strong>5 vidas e 7 cartas</strong>. O jogo usa um baralho de <strong>42 cartas</strong>: 5 de cada animal e 1 de cada especial. No sorteio inicial, ninguém recebe mais de 3 cartas do mesmo animal. Em cada turno, uma pessoa joga uma carta e a outra tenta adivinhar o animal.</p>
-      <p>Na roda ao redor de cada jogador, <strong>vermelho indica vida</strong>, <strong>azul indica escudo</strong> e <strong>amarelo indica sorte</strong>. Cada barrinha preenchida vale um ponto, até cinco por atributo.</p>
-      <p>Com teclado ou leitor de tela, navegue até suas cartas para ouvir seus nomes e efeitos e selecione uma quando for sua vez.</p>
+      <div class="rules-intro">
+        <p><strong>Blefe, adivinhe e vença.</strong> Cada jogador começa com 5 vidas e 7 cartas. Para decidir quem começa, ambos adivinham uma carta; em caso de empate, os dados decidem.</p>
+        <p>Na sua vez, jogue uma carta; na vez do adversário, tente adivinhar qual é.</p>
+        <p>Vence quem ficar sem cartas ou zerar a vida do adversário. Na roda, vermelho é vida, azul é escudo e amarelo é sorte: cada atributo vai até 5.</p>
+        <p>A sorte elimina três palpites incorretos. O escudo bloqueia dano, mas o elefante tira vida diretamente. Com teclado ou leitor de tela, navegue pelas cartas para ouvir seus efeitos.</p>
+      </div>
       <h3>Cartas de ataque</h3>
       <div class="rules-card-grid">
         <article class="rules-card" style="--card-accent:#e9a16f">
           <header class="rules-card-heading"><span>🦁</span><h4>Leão</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">O leão causa 2 de dano e o adversário compra 1 carta. Quem jogou ganha 1 sorte.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-loss">♥ −2 vidas</span><span class="rules-chip is-gain">▣ +1 carta</span></p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">✦ +1 sorte</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">O leão descansa: nada acontece.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Todos</span><span class="rules-chip is-neutral">Sem efeito</span></p>
           </section>
         </article>
@@ -177,11 +232,13 @@
           <header class="rules-card-heading"><span>🐅</span><h4>Tigre</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">O tigre causa 1 de dano e o adversário compra 2 cartas.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-loss">♥ −1 vida</span><span class="rules-chip is-gain">▣ +2 cartas</span></p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-neutral">Sem benefício</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">Quem adivinhou recupera 1 vida ou ganha 1 escudo se a vida estiver cheia.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">♥ +1 vida</span><span class="rules-chip is-action">Vida cheia: +1 escudo</span></p>
           </section>
         </article>
@@ -189,11 +246,13 @@
           <header class="rules-card-heading"><span>🐟</span><h4>Peixe</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">O peixe faz o adversário comprar 2 cartas e perder até 3 escudos. Quem jogou ganha 1 sorte e recupera 1 vida.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +2 cartas</span><span class="rules-chip is-loss">⬡ −3 escudos</span></p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">✦ +1 sorte</span><span class="rules-chip is-gain">♥ +1 vida</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">Quem adivinhou recupera 1 vida.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">♥ +1 vida</span></p>
           </section>
         </article>
@@ -201,11 +260,13 @@
           <header class="rules-card-heading"><span>🐒</span><h4>Macaco</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">O macaco causa 3 de dano e o adversário compra 1 carta. Quem jogou ganha 2 escudos.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-loss">♥ −3 de dano</span><span class="rules-chip is-gain">▣ +1 carta</span></p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">⬡ +2 escudos</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">Quem adivinhou ganha 1 sorte.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">✦ +1 sorte</span></p>
           </section>
         </article>
@@ -213,10 +274,12 @@
           <header class="rules-card-heading"><span>🐘</span><h4>Elefante</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">O elefante tira 1 vida e até 2 escudos do adversário.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-loss">♥ −1 vida</span><span class="rules-chip is-loss">⬡ −2 escudos</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">Quem adivinhou ganha 1 escudo.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">⬡ +1 escudo</span></p>
           </section>
         </article>
@@ -227,11 +290,13 @@
           <header class="rules-card-heading"><span>🐄</span><h4>Vaca</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">A vaca faz o adversário comprar 2 cartas e dá 2 escudos a quem jogou.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +2 cartas</span></p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">⬡ +2 escudos</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">Quem adivinhou ganha 1 sorte.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">✦ +1 sorte</span></p>
           </section>
         </article>
@@ -239,11 +304,13 @@
           <header class="rules-card-heading"><span>🐇</span><h4>Coelho</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">O coelho faz o adversário comprar 3 cartas e dá 2 sortes a quem jogou.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +3 cartas</span></p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">✦ +2 sorte</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">Quem adivinhou ganha 1 sorte.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">✦ +1 sorte</span></p>
           </section>
         </article>
@@ -251,11 +318,13 @@
           <header class="rules-card-heading"><span>🐢</span><h4>Tartaruga</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">A tartaruga faz o adversário comprar 1 carta e perder até 1 escudo. Quem jogou ganha 1 escudo.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Adversário</span><span class="rules-chip is-gain">▣ +1 carta</span><span class="rules-chip is-loss">⬡ −1 escudo</span></p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">⬡ +1 escudo</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">Quem adivinhou recupera 1 vida ou ganha 1 escudo se a vida estiver cheia.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem adivinhou</span><span class="rules-chip is-gain">♥ +1 vida</span><span class="rules-chip is-action">Vida cheia: +1 escudo</span></p>
           </section>
         </article>
@@ -266,11 +335,12 @@
           <header class="rules-card-heading"><span>🃏</span><h4>Coringa</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
+            <p class="rules-story">Quem jogou recupera 1 vida, ganha 1 escudo e pode revelar até 2 cartas do adversário para trocar uma pela sua. Se for sua última carta, vence antes da troca.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-gain">♥ +1 vida</span><span class="rules-chip is-gain">⬡ +1 escudo</span><span class="rules-chip is-action">Revela até 2 e troca 1 por uma carta própria</span></p>
-            <p>Clique nas cartas do adversário para revelá-las no leque; escolha uma delas e uma carta da sua mão para trocar. Se o Coringa for sua última carta, você vence antes da troca.</p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">O coringa não faz efeito.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Todos</span><span class="rules-chip is-neutral">Sem efeito</span></p>
           </section>
         </article>
@@ -278,10 +348,12 @@
           <header class="rules-card-heading"><span>🔄</span><h4>Troca</h4></header>
           <section class="rules-card-outcome">
             <h5>Se errar</h5>
-            <p class="rules-effect-row"><span class="rules-effect-target">Quem jogou</span><span class="rules-chip is-action">Pode trocar as mãos por 2 rodadas</span></p>
+            <p class="rules-story">As mãos dos dois jogadores são trocadas automaticamente. Se for sua última carta, você vence antes da troca.</p>
+            <p class="rules-effect-row"><span class="rules-effect-target">Todos</span><span class="rules-chip is-action">Mãos trocadas automaticamente; última carta vence</span></p>
           </section>
           <section class="rules-card-outcome">
             <h5>Se acertar</h5>
+            <p class="rules-story">As mãos continuam como estão.</p>
             <p class="rules-effect-row"><span class="rules-effect-target">Todos</span><span class="rules-chip is-neutral">Sem efeito</span></p>
           </section>
         </article>
@@ -295,36 +367,25 @@
         <span class="rules-chip is-action">Escudos bloqueiam dano</span>
         <span class="rules-chip is-action">Máximo de 5 de cada atributo</span>
       </div>
-      <p>As cartas compradas permanecem na mão. As jogadas e os avisos do sistema aparecem no chat após o resultado da rodada.</p>
-      <p class="rules-note">Cartas jogadas saem da mão. Vence quem eliminar o adversário ou ficar sem cartas. A IA decide suas jogadas no modo offline.</p>
+      <p class="rules-note">As jogadas e seus efeitos aparecem no chat. Cartas compradas ficam na mão; cartas jogadas saem dela.</p>
     </div>
   </dialog>
 
-  <dialog id="online-dialog" aria-labelledby="online-title">
-    <div class="dialog-head">
-      <div>
-        <p class="eyebrow">DUELAS ONLINE · 1 CONTRA 1</p>
-        <h2 id="online-title">Salas online</h2>
-      </div>
-      <div class="dialog-actions">
-        <button class="utility-icon" id="refresh-rooms-button" type="button" aria-label="Atualizar salas" title="Atualizar salas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.5-2"/></svg></button>
-        <button class="utility-icon" id="open-create-room" type="button" aria-label="Criar sala" title="Criar sala"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-        <button class="icon-button" id="close-online" type="button" aria-label="Fechar">×</button>
-      </div>
-    </div>
-    <div class="online-identity online-form">
-      <label for="nickname-input">Seu nickname</label>
-      <input id="nickname-input" name="nickname" type="text" minlength="2" maxlength="18" autocomplete="nickname" placeholder="Ex.: Matheus" required>
-    </div>
-    <section class="room-list-section" aria-labelledby="room-list-title">
-      <div class="room-list-heading">
-        <h3 id="room-list-title">Salas disponíveis</h3>
-        <span class="online-count" id="online-player-count" aria-live="polite">Conectando...</span>
-      </div>
-      <div class="room-list" id="room-list"></div>
-    </section>
-    <p class="online-status" id="online-status" role="status" aria-live="polite">Conecte-se para listar as salas.</p>
+  <dialog id="offline-dialog" aria-labelledby="offline-title">
+    <div class="dialog-head"><h2 id="offline-title">Partida ranqueada</h2><button class="icon-button" id="close-offline" type="button" aria-label="Fechar" disabled>×</button></div>
+    <p class="online-status" id="offline-status" role="status" aria-live="polite"></p>
     <button class="secondary-button" id="offline-unranked-button" type="button" hidden>Jogar offline sem ranking</button>
+  </dialog>
+
+  <dialog id="avatar-dialog" aria-labelledby="avatar-title">
+    <div class="dialog-head">
+      <div><p class="eyebrow">SEU PERFIL</p><h2 id="avatar-title">Escolha seu avatar</h2></div>
+      <button class="icon-button" id="close-avatar" type="button" aria-label="Fechar">×</button>
+    </div>
+    <p class="online-description">50 personagens para encontrar o seu.</p>
+    <div class="avatar-grid" id="avatar-grid" role="radiogroup" aria-label="Avatares disponíveis"></div>
+    <p class="online-status" id="avatar-status" role="status" aria-live="polite"></p>
+    <button class="primary-button" id="save-avatar" type="button">Usar avatar</button>
   </dialog>
 
   <dialog id="create-room-dialog" aria-labelledby="create-room-title">
@@ -358,22 +419,31 @@
       <button class="icon-button" id="close-account" type="button" aria-label="Fechar conta">×</button>
     </div>
     <form id="account-form" class="online-form">
-      <label for="account-nickname">Apelido no ranking</label>
-      <input id="account-nickname" minlength="2" maxlength="18" autocomplete="nickname" required>
-      <label for="account-email">E-mail</label>
-      <input id="account-email" type="email" autocomplete="email" required>
-      <label for="account-password">Senha</label>
-      <input id="account-password" type="password" minlength="8" autocomplete="current-password" required>
-      <button class="primary-button" type="submit">Entrar</button>
-      <button class="secondary-button" id="signup-button" type="button">Criar conta</button>
+      <div id="account-login-fields">
+        <label for="account-identifier">Nickname ou e-mail</label>
+        <input id="account-identifier" autocomplete="username" placeholder="Seu nickname ou e-mail">
+      </div>
+      <div id="account-signup-fields" hidden>
+        <label for="account-nickname">Nickname</label>
+        <input id="account-nickname" minlength="2" maxlength="18" autocomplete="nickname" placeholder="Como quer ser chamado?">
+        <label for="account-email">E-mail</label>
+        <input id="account-email" type="email" autocomplete="email" placeholder="voce@exemplo.com">
+      </div>
+      <div id="account-password-fields">
+        <label for="account-password">Senha</label>
+        <input id="account-password" type="password" minlength="8" maxlength="256" autocomplete="current-password" placeholder="Pelo menos 8 caracteres" required>
+      </div>
+      <button class="primary-button" id="account-submit" type="submit">Entrar</button>
+      <button class="text-button" id="signup-button" type="button">Ainda não tem conta? Criar conta</button>
     </form>
     <p class="online-status" id="account-status" role="status" aria-live="polite"></p>
   </dialog>
 
-  <script src="ranking-client.js?v=1.3.1"></script>
-  <script src="online.js?v=1.3.1"></script>
-  <script src="ai-policy.js?v=1.3.1"></script>
-  <script src="game.js?v=1.3.1"></script>
-  <script src="version-check.js?v=1.3.1"></script>
+  <script src="avatars.js?v=1.4.0"></script>
+  <script src="ranking-client.js?v=1.4.0"></script>
+  <script src="online.js?v=1.4.0"></script>
+  <script src="ai-policy.js?v=1.4.0"></script>
+  <script src="game.js?v=1.4.0"></script>
+  <script src="version-check.js?v=1.4.0"></script>
 </body>
 </html>

@@ -29,6 +29,14 @@ test("IA não atribui valor a escudos acima do limite", () => {
   assert.equal(AI.effectValue("elefante", owner, target, true, 0), 0);
 });
 
+test("IA considera Troca obrigatória mesmo quando é desfavorável", () => {
+  const owner = { hp: 5, shields: 0, luck: 0, cards: 1 };
+  const target = { hp: 5, shields: 0, luck: 0, cards: 4 };
+  assert.ok(AI.effectValue("troca", owner, target, false, 5) < 0);
+  assert.equal(AI.effectValue("troca", owner, target, true, 5), 0);
+  assert.ok(AI.effectValue("troca", { ...owner, cards: 0 }, target, false, 5) >= 12);
+});
+
 test("recompensas atualizam somente a ação realizada e preservam estatísticas antigas", () => {
   const old = AI.createModel();
   old.version = 1;

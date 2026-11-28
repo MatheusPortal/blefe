@@ -139,6 +139,24 @@ test("adversário com uma carta mantém a carta após troca e último Coringa ve
   assert.equal(last.room.game.jokerSelection, null);
 });
 
+test("Troca automática no servidor respeita palpite e vitória com a última carta", () => {
+  for (const [guess, ownerHand, expectedOwner, expectedTarget, winner] of [
+    ["vaca", ["leao", "tigre"], ["peixe"], ["leao", "tigre"], null],
+    ["troca", ["leao", "tigre"], ["leao", "tigre"], ["peixe"], null],
+    ["vaca", [], [], ["peixe"], "a"]
+  ]) {
+    const f = fixture(ownerHand, ["peixe"]);
+    f.room.game.activeCard = "troca";
+    f.room.game.guesses.set("b", guess);
+    f.resolveRound(f.room);
+    assert.deepEqual(f.owner.hand, expectedOwner);
+    assert.deepEqual(f.target.hand, expectedTarget);
+    assert.equal(f.room.game.winnerId, winner);
+    assert.equal(f.room.game.lastResult.swappedWith, guess === "vaca" && ownerHand.length ? "b" : null);
+    if (!winner) assert.throws(() => f.handleRoomAction(f.ownerPeer, { action: "swap" }), /Ação de sala inválida/);
+  }
+});
+
 test("prazos completam as três etapas e abertura repetida não duplica a pilha", () => {
   const f = fixture(["tigre"], ["peixe", "vaca"]);
   f.resolveRound(f.room);
@@ -161,10 +179,10 @@ test("prazos completam as três etapas e abertura repetida não duplica a pilha"
   assert.deepEqual(opening.room.game.publicDiscards, ["leao"]);
 });
 
-function offlineFixture(owner, ownerHand, targetHand) {
+function offlineFixture(owner, ownerHand, targetHand, cardType = "coringa") {
   const target = owner === "player" ? "ai" : "player";
   const state = {
-    gameOver: false, pending: { owner, type: "coringa" }, pendingJokerReveal: null,
+    gameOver: false, pending: { owner, type: cardType }, pendingJokerReveal: null,
     players: {
       [owner]: { name: owner, hp: 4, hand: [...ownerHand] },
       [target]: { name: target, hp: 4, hand: [...targetHand] }
@@ -173,7 +191,7 @@ function offlineFixture(owner, ownerHand, targetHand) {
   };
   const context = {
     state, window: { clearInterval() {} }, clockInterval: null,
-    playResultSound() {}, resolveCardEffect: () => "Coringa",
+    playResultSound() {}, playSwapSound() {}, resolveCardEffect: () => "Coringa",
     getPlayerAttributes: (player) => ({ hp: player.hp, cards: player.hand.length }),
     createAttributeAnimations: () => [], animateAttributeChanges() {}, triggerVisualEffect() {},
     recordResolvedGuess() {}, recordSystemEvent() {}, render() {}, beginTimedPhase() {},
@@ -182,9 +200,30 @@ function offlineFixture(owner, ownerHand, targetHand) {
     scoreAiCard: (card) => ({ peixe: 5, leao: 3, vaca: 1 }[card] || 0),
     endGame: (winner) => { state.gameOver = true; state.winner = winner; }
   };
+  if (cardType === "troca") {
+    const effectCode = clientSource.slice(clientSource.indexOf("  function resolveCardEffect("), clientSource.indexOf("  function triggerVisualEffect("));
+    context.resolveCardEffect = vm.runInNewContext(`${effectCode}\nresolveCardEffect`, context);
+  }
   const api = vm.runInNewContext(`${offlineRules}\n({ resolveGuess, submitJokerReveal })`, context);
   return { ...api, state, target };
 }
+
+test("Troca automática offline funciona para ambos jogadores, acerto e última carta", () => {
+  for (const owner of ["player", "ai"]) {
+    for (const [guess, hand, expectedOwner, expectedTarget, winner] of [
+      ["vaca", ["leao", "tigre"], ["peixe"], ["leao", "tigre"], null],
+      ["troca", ["leao", "tigre"], ["leao", "tigre"], ["peixe"], null],
+      ["vaca", [], [], ["peixe"], owner]
+    ]) {
+      const f = offlineFixture(owner, hand, ["peixe"], "troca");
+      f.resolveGuess(f.target, guess);
+      assert.deepEqual(f.state.players[owner].hand, expectedOwner);
+      assert.deepEqual(f.state.players[f.target].hand, expectedTarget);
+      assert.equal(f.state.winner || null, winner);
+      if (guess === "vaca" && hand.length) assert.match(f.state.lastReveal.effectSummary, /trocadas automaticamente/);
+    }
+  }
+});
 
 test("offline revela no leque, troca uma carta e reconhece o último Coringa", () => {
   const f = offlineFixture("player", ["vaca"], ["leao"]);

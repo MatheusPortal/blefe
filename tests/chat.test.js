@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+import "../avatars.js";
 
 class Element {
   constructor() {
@@ -25,12 +26,12 @@ class Element {
   get innerText() { return [this.textContent, ...this.children.map((child) => child.innerText)].join(" "); }
   setAttribute() {}
   querySelector() { return new Element(); }
-  showModal() {}
-  close() {}
+  showModal() { this.open = true; }
+  close() { this.open = false; }
   focus() {}
 }
 
-async function setup(healthResponse = { ok: true, json: async () => ({ playersOnline: 0 }) }, connecting = false) {
+async function setup(healthResponse = { ok: true, json: async () => ({ playersOnline: 0 }) }, connecting = false, protocol = "http:") {
   const elements = new Map();
   const document = {
     querySelector(selector) {
@@ -51,13 +52,17 @@ async function setup(healthResponse = { ok: true, json: async () => ({ playersOn
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     setInterval() { return 1; },
     clearInterval() {},
+    setTimeout() { return 1; },
+    clearTimeout() {},
     BlefeGame: { startOnlineRoom() {}, startOffline() {}, applyRoomSnapshot() {}, leaveToMenu() {} },
-    BlefeRanking: { getPlayer: () => null, requireAccount: () => null }
+    BlefeRanking: { getPlayer: () => null, requireAccount: () => null },
+    BlefeProfile: { get: () => ({ nickname: "Ana", avatar: 1 }), getToken: () => "" },
+    BlefeAvatars: globalThis.BlefeAvatars
   };
   const context = vm.createContext({
     document, window, WebSocket: Socket,
     fetch: async () => healthResponse,
-    location: { protocol: "http:", host: "localhost" }, Date
+    location: { protocol, host: "localhost" }, Date
   });
   vm.runInContext(await readFile(new URL("../online.js", import.meta.url), "utf8"), context);
   return { elements, window, Socket };
@@ -71,6 +76,34 @@ test("contagem online mostra conexões ou informa indisponibilidade", async () =
   const unavailable = await setup({ ok: false, status: 503 });
   await new Promise(setImmediate);
   assert.equal(unavailable.elements.get("#online-player-count").textContent, "Contagem indisponível");
+});
+
+test("online aberto como arquivo informa que o servidor é necessário", async () => {
+  const { elements, Socket } = await setup(undefined, false, "file:");
+  elements.get("#online-button").listeners.click();
+  assert.match(elements.get("#online-status").textContent, /abra o jogo pelo servidor/);
+  assert.equal(Socket.instance, undefined);
+});
+
+test("lista de salas mostra região configurada e ping medido sem pedir nickname", async () => {
+  const { elements, Socket } = await setup();
+  elements.get("#online-button").listeners.click();
+  const socket = Socket.instance;
+  socket.listeners.open();
+  const probe = socket.sent.find((message) => message.type === "latency-probe");
+  assert.ok(probe);
+  socket.emit({ type: "room-list", rooms: [
+    { id: "one", name: "Mesa", playerCount: 0, region: "us-ohio" },
+    { id: "two", name: "Outra", playerCount: 1, region: null }
+  ] });
+  const list = elements.get("#room-list");
+  assert.match(list.children[0].innerText, /EUA · Ohio/);
+  assert.match(list.children[1].innerText, /Região indisponível/);
+  assert.match(list.children[0].innerText, /Ping indisponível/);
+  socket.emit({ type: "latency-result", id: probe.id });
+  assert.match(list.children[0].innerText, /\d+ ms/);
+  assert.equal(elements.get("#online-screen").hidden, false);
+  assert.equal(elements.get("#main-menu").hidden, true);
 });
 
 test("offline com conta solicita partida validada e oferece alternativa se houver erro", async () => {
@@ -93,7 +126,7 @@ test("falha de conexão não repete partida pendente ao reconectar", async () =>
   Socket.instance.readyState = 3;
   Socket.instance.listeners.close();
   assert.equal(elements.get("#offline-unranked-button").hidden, false);
-  assert.equal(elements.get("#close-online").disabled, false);
+  assert.equal(elements.get("#close-offline").disabled, false);
   elements.get("#online-button").listeners.click();
   Socket.instance.readyState = 1;
   Socket.instance.listeners.open();
@@ -186,10 +219,10 @@ test("card preserva ação especial sem repetir alterações", async () => {
   window.BlefeOnline.logGameEvent({
     kind: "round-result", round: 2, cardType: "troca", playedBy: "Você", guesser: "IA",
     guess: "vaca", correct: false, attributes: [],
-    effectSummary: "Você pode trocar as mãos durante as 2 próximas rodadas"
+    effectSummary: "as mãos foram trocadas automaticamente"
   });
   const card = elements.get("#chat-messages").children[0];
-  assert.match(card.innerText, /pode trocar as mãos durante as 2 próximas rodadas/);
+  assert.match(card.innerText, /mãos foram trocadas automaticamente/);
   assert.doesNotMatch(card.innerText, /Sem alterações de atributos/);
 
   window.BlefeOnline.logGameEvent({

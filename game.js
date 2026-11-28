@@ -31,7 +31,7 @@
     macaco: { name: "Macaco", emoji: "🐒", color: "#c49668", effect: "Erro — adversário: −3 de dano, +1 carta; quem jogou: +2 escudos. Acerto — quem adivinhou: +1 sorte." },
     elefante: { name: "Elefante", emoji: "🐘", color: "#91a8b8", effect: "Erro — adversário: −1 vida, −2 escudos. Acerto — quem adivinhou: +1 escudo." },
     tartaruga: { name: "Tartaruga", emoji: "🐢", color: "#7bc99c", effect: "Erro — adversário: +1 carta, −1 escudo; quem jogou: +1 escudo. Acerto — quem adivinhou: +1 vida ou, se cheia, +1 escudo." },
-    troca: { name: "Troca", emoji: "🔄", color: "#d9c477", effect: "Erro — quem jogou: pode trocar as mãos por 2 rodadas." },
+    troca: { name: "Troca", emoji: "🔄", color: "#d9c477", effect: "Erro — as mãos são trocadas automaticamente. Última carta: vitória antes da troca." },
     coringa: { name: "Coringa", emoji: "🃏", color: "#f1839a", effect: "Erro — quem jogou: +1 vida, +1 escudo; revela até 2 cartas e troca 1 delas por uma carta própria." }
   };
   const TURN_SECONDS = 40;
@@ -53,7 +53,6 @@
   const roundLabel = document.querySelector("#round-label");
   const roundValue = document.querySelector("#round-value");
   const useLuckButton = document.querySelector("#use-luck-button");
-  const swapHandsButton = document.querySelector("#swap-hands-button");
   const roundCountdown = document.querySelector("#round-countdown");
   const roundCountdownValue = document.querySelector("#round-countdown-value");
   const ownHud = document.querySelector("#own-hud");
@@ -114,7 +113,6 @@
   let roomAnimationStarted = -Infinity;
   let systemEventSequence = 0;
   let lastSystemEventId = 0;
-  let swapRequestPending = false;
   let globalLearning = createLocalLearningModel();
   let learningAvailable = false;
   let learningLoadPromise = null;
@@ -243,7 +241,6 @@
     onlineSession = session;
     onlineNames = names;
     lastSystemEventId = 0;
-    swapRequestPending = false;
     state = null;
     showGameView();
   }
@@ -371,9 +368,10 @@
     return hand;
   }
 
-  function makePlayer(name, hand) {
+  function makePlayer(name, hand, avatar) {
     return {
       name,
+      avatar,
       hp: 5,
       luck: 0,
       shields: 0,
@@ -524,7 +522,6 @@
     if (!onlineRole) window.BlefeOnline?.showOfflineLog(AI_NAME);
     hoverCard = -1;
     hoverOpponentCard = -1;
-    swapRequestPending = false;
     if (resultAnimationFrame) {
       window.cancelAnimationFrame(resultAnimationFrame);
       resultAnimationFrame = null;
@@ -534,12 +531,14 @@
     state = {
       players: {
         player: makePlayer(
-          onlineNames ? onlineNames.local : "Você",
-          dealInitialHand(extraDeck, extraDiscard)
+          onlineNames ? onlineNames.local : window.BlefeProfile?.get()?.nickname || "Você",
+          dealInitialHand(extraDeck, extraDiscard),
+          window.BlefeProfile?.get()?.avatar
         ),
         ai: makePlayer(
           onlineNames ? onlineNames.remote : AI_NAME,
-          dealInitialHand(extraDeck, extraDiscard)
+          dealInitialHand(extraDeck, extraDiscard),
+          31
         )
       },
       extraDeck,
@@ -557,7 +556,6 @@
       guesses: {},
       lastReveal: null,
       systemEvents: [],
-      swapAbility: null,
       pauseSeconds: 0,
       resultSequence: 0,
       visualEffectSequence: 0,
@@ -815,7 +813,6 @@
     state.guesses = {};
     state.lastReveal = null;
     state.pauseSeconds = 0;
-    expireSwapAbility();
     state.message = playerKey === "player"
       ? `Vez do jogador ${state.players.player.name}.`
       : isOnlineHost()
@@ -971,71 +968,15 @@
           ? "; revela até 2 cartas e troca 1 por uma carta própria" : ""}`;
       }
       case "troca":
-        state.swapAbility = { owner: ownerKey, expiresAfterRound: state.round + 2 };
-        return `${owner.name} pode trocar as mãos durante as 2 próximas rodadas`;
+        if (!owner.hand.length || !guesser.hand.length) return "sem troca: última carta";
+        [owner.hand, guesser.hand] = [guesser.hand, owner.hand];
+        state.aiHasJoker = state.players.ai.hand.includes("coringa");
+        triggerVisualEffect("swap");
+        playSwapSound();
+        return "as mãos foram trocadas automaticamente";
       default:
         return "sem efeito";
     }
-  }
-
-  function isSwapAvailable(ownerKey = "player") {
-    return Boolean(
-      state.swapAbility
-      && state.swapAbility.owner === ownerKey
-      && state.round <= state.swapAbility.expiresAfterRound
-      && !state.gameOver
-    );
-  }
-
-  function exchangeHands(ownerKey) {
-    if (!isSwapAvailable(ownerKey)) return false;
-    const targetKey = ownerKey === "player" ? "ai" : "player";
-    const owner = state.players[ownerKey];
-    const target = state.players[targetKey];
-    [owner.hand, target.hand] = [target.hand, owner.hand];
-    state.aiHasJoker = state.players.ai.hand.includes("coringa");
-    state.swapAbility = null;
-    swapRequestPending = false;
-    state.message = "Troca de mãos!";
-    state.log = state.message;
-    recordSystemEvent(`${owner.name} trocou as mãos com ${target.name}.`);
-    state.attributeAnimations = [
-      { playerKey: "player", text: "mão trocada", color: "#d9c477", startedAt: performance.now() },
-      { playerKey: "ai", text: "mão trocada", color: "#d9c477", startedAt: performance.now() }
-    ];
-    triggerVisualEffect("swap");
-    playSwapSound();
-    render();
-    return true;
-  }
-
-  function completeHandSwap(ownerKey) {
-    if (!exchangeHands(ownerKey)) return false;
-    window.clearInterval(clockInterval);
-    window.clearInterval(roundPauseInterval);
-    window.clearTimeout(aiTimeout);
-    state.round += 1;
-    state.pending = null;
-    state.pendingJokerReveal = null;
-    state.guesses = {};
-    state.lastReveal = null;
-    state.eliminated = [];
-    state.hintUsed = false;
-    state.pauseSeconds = 0;
-    state.phase = "player-play";
-    state.message = `Troca concluída. Rodada ${state.round}: vez do jogador ${state.players.player.name}.`;
-    state.log = state.message;
-    recordSystemEvent(state.message);
-    expireSwapAbility();
-    if (state.players.player.hand.length === 0) {
-      endGame("player", `${state.players.player.name} venceu · sem cartas`);
-    } else if (state.players.ai.hand.length === 0) {
-      endGame("ai", `${state.players.ai.name} venceu · sem cartas`);
-    } else {
-      beginTimedPhase();
-    }
-    render();
-    return true;
   }
 
   function triggerVisualEffect(kind, details = {}) {
@@ -1067,30 +1008,6 @@
       resultAnimationFrame = window.requestAnimationFrame(drawFrame);
     };
     resultAnimationFrame = window.requestAnimationFrame(drawFrame);
-  }
-
-  function useSwapHands(event) {
-    if (event && event.isTrusted === false) return;
-    if (roomState && onlineRole === "room") {
-      if (roomState.swapOwnerId === roomState.you) roomSession?.sendAction({ action: "swap" });
-      return;
-    }
-    if (!state || !isSwapAvailable("player") || swapRequestPending || !["player-play", "player-guess", "ai-play", "ai-guess", "result"].includes(state.phase)) return;
-    if (isOnlineGuest()) {
-      if (!sendOnlineAction("swap-hands")) return;
-      swapRequestPending = true;
-      render();
-      return;
-    }
-    completeHandSwap("player");
-  }
-
-  function expireSwapAbility() {
-    if (state.swapAbility && state.round > state.swapAbility.expiresAfterRound) {
-      const owner = state.players[state.swapAbility.owner];
-      recordSystemEvent(`A oportunidade de Troca de ${owner.name} terminou.`);
-      state.swapAbility = null;
-    }
   }
 
   function playCard(playerKey, type) {
@@ -1485,17 +1402,11 @@
 
   function advanceAfterResult() {
     if (state.phase !== "result") return;
-    if (!onlineRole && state.lastReveal.owner === "ai" && isSwapAvailable("ai")
-      && state.players.ai.hand.length > state.players.player.hand.length) {
-      completeHandSwap("ai");
-      return;
-    }
     if (state.lastReveal.owner === "player") {
       startAiTurn();
       return;
     }
     state.round += 1;
-    expireSwapAbility();
     state.guesses = {};
     state.lastReveal = null;
     state.pauseSeconds = 0;
@@ -1596,17 +1507,11 @@
     if (roomState && onlineRole === "room") {
       timer.hidden = true;
       useLuckButton.hidden = true;
-      swapHandsButton.hidden = roomState.swapOwnerId !== roomState.you;
-      swapHandsButton.disabled = false;
       return;
     }
     useLuckButton.hidden = state.phase !== "player-guess";
     useLuckButton.disabled = state.players.player.luck < 1 || state.hintUsed;
     updateLuckButtonLabel(state.players.player.luck);
-    swapHandsButton.hidden = !isSwapAvailable("player");
-    swapHandsButton.disabled = swapRequestPending;
-    swapHandsButton.textContent = swapRequestPending ? "Aguardando troca..." : "↔ Trocar mãos";
-    swapHandsButton.setAttribute("aria-label", "Trocar todas as cartas da mão com o adversário");
   }
 
   function updateLuckButtonLabel(luck) {
@@ -1627,9 +1532,6 @@
       }
     };
     snapshot.rematch = { player: state.rematch.ai, ai: state.rematch.player };
-    if (snapshot.swapAbility) {
-      snapshot.swapAbility.owner = snapshot.swapAbility.owner === "player" ? "ai" : "player";
-    }
     snapshot.extraDeck = Array(snapshot.extraDeck.length).fill(null);
     snapshot.extraDiscard = [];
     snapshot.playerPlayHistory = {};
@@ -1708,10 +1610,6 @@
     }
     if (state.gameOver) return;
     const type = message.type;
-    if (message.action === "swap-hands" && isSwapAvailable("ai")) {
-      completeHandSwap("ai");
-      return;
-    }
     if (message.action === "setup-guess" && COMMON_CARDS.includes(type) && state.phase === "setup-guess") {
       if (state.setupGuesses.ai) return;
       state.setupGuesses.ai = type;
@@ -1766,7 +1664,6 @@
     } else {
       state.visualEffectStartedAt = previousVisualStartedAt;
     }
-    if (!state.swapAbility || state.swapAbility.owner !== "player") swapRequestPending = false;
     syncSystemEvents(state.systemEvents);
     state.attributeAnimations = previousAttributes && previousRound === snapshot.round
       ? createAttributeAnimations(previousAttributes)
@@ -1862,13 +1759,6 @@
       || !["swap", "reveal"].includes(snapshot.visualEffect.kind)
       || (snapshot.visualEffect.cardType !== undefined && !CARD_TYPES.includes(snapshot.visualEffect.cardType))
       || (snapshot.visualEffect.correct !== undefined && typeof snapshot.visualEffect.correct !== "boolean")
-    )) return false;
-    if (snapshot.swapAbility !== null && (
-      !snapshot.swapAbility
-      || !["player", "ai"].includes(snapshot.swapAbility.owner)
-      || !Number.isInteger(snapshot.swapAbility.expiresAfterRound)
-      || snapshot.swapAbility.expiresAfterRound < snapshot.round
-      || snapshot.swapAbility.expiresAfterRound > snapshot.round + 2
     )) return false;
     if (!Array.isArray(snapshot.systemEvents) || snapshot.systemEvents.length > 40 || !snapshot.systemEvents.every((event) => (
       event
@@ -2090,7 +1980,9 @@
     element.hidden = !player;
     if (!player) return;
     const name = player.nickname || player.name;
-    element.querySelector(".hud-avatar").textContent = Array.from(name.trim())[0]?.toLocaleUpperCase("pt-BR") || "?";
+    const avatar = element.querySelector(".hud-avatar");
+    if (globalThis.BlefeAvatars?.isValid(player.avatar)) globalThis.BlefeAvatars.render(avatar, player.avatar);
+    else avatar.textContent = Array.from(name.trim())[0]?.toLocaleUpperCase("pt-BR") || "?";
     element.classList.toggle("is-active", active);
     element.setAttribute("aria-label", `${name}: vida ${player.hp} de 5, escudo ${player.shields} de 5, sorte ${player.luck} de 5${active ? ", vez de jogar" : ""}`);
     for (const [stat, value] of Object.entries({ hp: player.hp, shields: player.shields, luck: player.luck })) {
@@ -2122,7 +2014,6 @@
         useLuckButton.disabled = !own || own.luck < 1 || (roomState.eliminated || []).length > 0;
         updateLuckButtonLabel(own?.luck || 0);
       }
-      swapHandsButton.hidden = roomState.swapOwnerId !== roomState.you;
       tableOverlay.hidden = roomState.phase !== "finished";
       const winner = roomState.players.find((player) => player.id === roomState.winnerId);
       tableResult.textContent = winner ? `${winner.nickname} venceu a partida!` : "";
@@ -3211,7 +3102,6 @@
     actionArea.scrollLeft += event.deltaY;
   }, { passive: false });
   useLuckButton.addEventListener("click", useLuck);
-  swapHandsButton.addEventListener("click", useSwapHands);
   tableRestartButton.addEventListener("click", requestRematch);
   document.querySelector("#rules-button").addEventListener("click", () => rulesDialog.showModal());
   document.querySelector("#close-rules").addEventListener("click", () => rulesDialog.close());

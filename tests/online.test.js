@@ -55,9 +55,14 @@ test("sala mantém cartas ocultas, cronômetros e vitória ao esvaziar a mão", 
   guest.send("join-room", { nickname: "Visitante", roomId: list.rooms[0].id });
   const rejection = await guest.next((message) => message.type === "error");
   assert.match(rejection.message, /Ranking indisponível/);
-  host.send("create-room", { nickname: "Host", roomName: "Teste" });
+  host.send("latency-probe", { id: 17 });
+  assert.equal((await host.next((message) => message.type === "latency-result")).id, 17);
+  host.send("create-room", { nickname: "Host", avatar: 12, roomName: "Teste" });
   const created = await host.next((message) => message.type === "room-created");
-  guest.send("join-room", { nickname: "Visitante", roomId: created.room.id });
+  assert.equal(created.room.players[0].avatar, 12);
+  guest.send("join-room", { nickname: "Visitante", avatar: 51, roomId: created.room.id });
+  assert.match((await guest.next((message) => message.type === "error")).message, /Avatar inválido/);
+  guest.send("join-room", { nickname: "Visitante", avatar: 25, roomId: created.room.id });
   await guest.next((message) => message.type === "room-joined");
   const counting = await host.next((message) => message.type === "lobby-update" && message.room.players.length === 2);
   assert.ok(counting.room.startsAt - counting.room.serverTime >= 4900);
@@ -66,7 +71,7 @@ test("sala mantém cartas ocultas, cronômetros e vitória ao esvaziar a mão", 
   assert.equal(waiting.room.startsAt, null);
   await assert.rejects(() => host.next((message) => message.type === "room-started", 5200), /Tempo esgotado/);
   const joinedAt = Date.now();
-  guest.send("join-room", { nickname: "Visitante", roomId: created.room.id });
+  guest.send("join-room", { nickname: "Visitante", avatar: 25, roomId: created.room.id });
   await guest.next((message) => message.type === "room-joined");
   host.send("start-room");
   const premature = await host.next((message) => message.type === "error");
@@ -80,6 +85,7 @@ test("sala mantém cartas ocultas, cronômetros e vitória ao esvaziar a mão", 
   assert.ok([0, 1, 2].includes(opening.state.tableTheme));
   assert.equal(guestOpening.state.tableTheme, opening.state.tableTheme);
   assert.equal(opening.state.players.find((player) => player.id !== opening.state.you).hand, undefined);
+  assert.deepEqual(opening.state.players.map((player) => player.avatar), [12, 25]);
   for (const client of [host, guest]) client.send("room-action", { payload: { action: "setup-guess", guess: "leao" } });
 
   const clients = new Map([[opening.state.you, host], [guestOpening.state.you, guest]]);

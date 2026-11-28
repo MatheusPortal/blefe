@@ -105,7 +105,7 @@
           if (g.cards > 0 && o.cards > 0 && g.hp > 0) swapValue = 0.5;
           break;
         case "troca":
-          if (o.cards > g.cards) swapValue = (o.cards - g.cards) * 1.3;
+          if (o.cards > 0 && g.cards > 0) swapValue = (o.cards - g.cards) * 1.3;
           break;
       }
     }

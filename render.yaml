@@ -4,6 +4,9 @@ services:
     runtime: docker
     plan: free
     region: ohio
+    envVars:
+      - key: BLEFE_SERVER_REGION
+        value: us-ohio
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
